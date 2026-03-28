@@ -47,28 +47,10 @@ server.registerTool(
   {
     title: "Analyze Chess Game",
     description:
-      "Analyze an entire chess game from PGN, a Lichess URL, or a Lichess game ID. Returns a full review including accuracy for each player, critical moments (blunders, mistakes, missed wins), phase breakdown, and detected patterns.",
+      "Analyze an entire chess game. Accepts: a raw PGN string, a Chess.com game URL (https://www.chess.com/game/live/...), a Lichess game URL or game ID, or a Chess.com username to automatically fetch and analyze that player's most recent game. Returns a full review including accuracy for each player, critical moments (blunders, mistakes, missed wins), phase breakdown, and detected patterns.",
     inputSchema: AnalyzeGameInputSchema,
   },
   async (input) => {
-    if (!input.pgn && !input.game_url && !input.lichess_id) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: [
-              "To analyze a game, please provide one of the following:",
-              "",
-              "1. **Paste a PGN** — copy it from Chess.com (Game → Share → Copy PGN) or Lichess (Share & export → Copy PGN) and pass it as `pgn`.",
-              "2. **Lichess URL or game ID** — e.g. `https://lichess.org/abcd1234` as `game_url`, or just `abcd1234` as `lichess_id`.",
-              "3. **Chess.com URL** — paste the PGN directly (Chess.com game export via URL is not yet supported).",
-              "",
-              "Which would you like to use?",
-            ].join("\n"),
-          },
-        ],
-      };
-    }
     const result = await handleAnalyzeGame(input);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

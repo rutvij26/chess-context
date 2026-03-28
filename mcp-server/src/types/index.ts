@@ -71,22 +71,30 @@ export const AnalyzePositionInputSchema = z.object({
 export type AnalyzePositionInput = z.infer<typeof AnalyzePositionInputSchema>;
 
 export const AnalyzeGameInputSchema = z.object({
-  pgn: z.string().optional().describe("PGN string of the game"),
+  pgn: z.string().optional().describe("PGN string of the game to analyze"),
   game_url: z
     .string()
     .optional()
-    .describe("Chess.com or Lichess game URL (e.g. https://lichess.org/abcd1234)"),
+    .describe(
+      "Chess.com or Lichess game URL — e.g. https://www.chess.com/game/live/169033837793 or https://lichess.org/abcd1234"
+    ),
   lichess_id: z
     .string()
     .optional()
-    .describe("Lichess game ID (8 characters, e.g. abcd1234)"),
+    .describe("Lichess game ID (e.g. abcd1234)"),
+  username: z
+    .string()
+    .optional()
+    .describe(
+      "Chess.com username — fetches that player's most recent game when no PGN, URL, or game ID is provided"
+    ),
   depth: z
     .number()
     .int()
     .min(1)
     .max(25)
     .optional()
-    .describe("Max analysis depth for critical positions (default: 18)"),
+    .describe("Analysis depth for critical positions (default: 18)"),
 });
 export type AnalyzeGameInput = z.infer<typeof AnalyzeGameInputSchema>;
 

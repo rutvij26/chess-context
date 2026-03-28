@@ -3,6 +3,20 @@ import axios from "axios";
 import type { UCIAnalysisLine } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
+// Mock chess.com API (fetchGameByUrl, fetchLastGame)
+// ---------------------------------------------------------------------------
+
+vi.mock("../data/chesscom-api.js", () => ({
+  fetchGameByUrl: vi.fn(),
+  fetchLastGame: vi.fn(),
+  getRecentGames: vi.fn(),
+  getProfile: vi.fn(),
+  getStats: vi.fn(),
+  buildPlayerStats: vi.fn(),
+  PlayerNotFoundError: class PlayerNotFoundError extends Error {},
+}));
+
+// ---------------------------------------------------------------------------
 // Mock all I/O dependencies
 // ---------------------------------------------------------------------------
 
@@ -29,9 +43,12 @@ vi.mock("../cache/index.js", () => ({
 import { handleAnalyzeGame } from "./analyze-game.js";
 import { analyzePosition as stockfishAnalyze } from "../engines/stockfish.js";
 import { getCloudEval } from "../engines/lichess-eval.js";
+import { fetchGameByUrl, fetchLastGame } from "../data/chesscom-api.js";
 
 const stockfishMock = vi.mocked(stockfishAnalyze);
 const cloudMock = vi.mocked(getCloudEval);
+const fetchGameByUrlMock = vi.mocked(fetchGameByUrl);
+const fetchLastGameMock = vi.mocked(fetchLastGame);
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -62,6 +79,8 @@ function makeEvalLine(cp: number): UCIAnalysisLine {
 beforeEach(() => {
   stockfishMock.mockReset();
   cloudMock.mockReset();
+  fetchGameByUrlMock.mockReset();
+  fetchLastGameMock.mockReset();
   // Default: cloud miss, Stockfish returns equal eval
   cloudMock.mockResolvedValue(null);
   stockfishMock.mockResolvedValue([makeEvalLine(20)]);
@@ -174,36 +193,95 @@ describe("handleAnalyzeGame — critical moments", () => {
 });
 
 // ---------------------------------------------------------------------------
-// URL-based input
+// URL-based input and routing
 // ---------------------------------------------------------------------------
 
 describe("handleAnalyzeGame — URL resolution", () => {
-  it("throws for a Chess.com URL (not yet supported)", async () => {
-    await expect(
-      handleAnalyzeGame({ game_url: "https://www.chess.com/game/live/12345" })
-    ).rejects.toThrow(/Chess.com/i);
+  it("fetches a Chess.com live game via fetchGameByUrl when username is provided", async () => {
+    fetchGameByUrlMock.mockResolvedValue(SHORT_PGN);
+
+    const result = await handleAnalyzeGame({
+      game_url: "https://www.chess.com/game/live/169033837793",
+      username: "notsobrillantmove",
+    });
+
+    expect(fetchGameByUrlMock).toHaveBeenCalledWith(
+      "https://www.chess.com/game/live/169033837793",
+      "notsobrillantmove"
+    );
+    expect(result.game_info.platform).toBe("chess.com");
+    expect(result).toHaveProperty("game_info");
   });
 
-  it("attempts to fetch a Lichess game by ID from a URL", async () => {
-    const axiosSpy = vi.spyOn(axios, "get").mockRejectedValueOnce(
-      Object.assign(new Error("404"), { response: { status: 404 } })
+  it("fetches a Chess.com daily game via fetchGameByUrl when username is provided", async () => {
+    fetchGameByUrlMock.mockResolvedValue(SHORT_PGN);
+
+    await handleAnalyzeGame({
+      game_url: "https://www.chess.com/game/daily/987654321",
+      username: "notsobrillantmove",
+    });
+
+    expect(fetchGameByUrlMock).toHaveBeenCalledWith(
+      "https://www.chess.com/game/daily/987654321",
+      "notsobrillantmove"
     );
+  });
 
+  it("throws when chess.com URL is given without a username", async () => {
     await expect(
-      handleAnalyzeGame({ game_url: "https://lichess.org/abcd1234" })
-    ).rejects.toThrow();
+      handleAnalyzeGame({ game_url: "https://www.chess.com/game/live/169033837793" })
+    ).rejects.toThrow(/username/i);
+  });
 
-    // Verify it called axios with the Lichess export endpoint
+  it("fetches a Lichess game by URL via axios", async () => {
+    const axiosSpy = vi
+      .spyOn(axios, "get")
+      .mockResolvedValueOnce({ data: SHORT_PGN });
+
+    const result = await handleAnalyzeGame({
+      game_url: "https://lichess.org/abcd1234",
+    });
+
     expect(axiosSpy).toHaveBeenCalledWith(
       expect.stringContaining("lichess.org/game/export/abcd1234"),
       expect.anything()
     );
+    expect(result.game_info.platform).toBe("lichess");
     axiosSpy.mockRestore();
   });
 
-  it("throws when no PGN source is provided", async () => {
-    // @ts-expect-error intentional missing input
-    await expect(handleAnalyzeGame({})).rejects.toThrow();
+  it("fetches a Lichess game by lichess_id via axios", async () => {
+    const axiosSpy = vi
+      .spyOn(axios, "get")
+      .mockResolvedValueOnce({ data: SHORT_PGN });
+
+    const result = await handleAnalyzeGame({ lichess_id: "abcd1234" });
+
+    expect(axiosSpy).toHaveBeenCalledWith(
+      expect.stringContaining("lichess.org/game/export/abcd1234"),
+      expect.anything()
+    );
+    expect(result.game_info.platform).toBe("lichess");
+    axiosSpy.mockRestore();
+  });
+
+  it("fetches last game when only username is provided", async () => {
+    fetchLastGameMock.mockResolvedValue(SHORT_PGN);
+
+    const result = await handleAnalyzeGame({ username: "notsobrillantmove" });
+
+    expect(fetchLastGameMock).toHaveBeenCalledWith("notsobrillantmove");
+    expect(result).toHaveProperty("game_info");
+  });
+
+  it("throws a clear error when no input is provided at all", async () => {
+    await expect(handleAnalyzeGame({})).rejects.toThrow(/username/i);
+  });
+
+  it("throws for an unrecognised game URL", async () => {
+    await expect(
+      handleAnalyzeGame({ game_url: "https://unknown-site.com/game/123" })
+    ).rejects.toThrow(/Unrecognised game URL/i);
   });
 });
 

@@ -4,6 +4,7 @@ import { analyzePosition as stockfishAnalyze, isReady as stockfishReady, waitUnt
 import { analyzePositionParallel, isPoolReady } from "../engines/stockfish-pool.js";
 import { getCloudEval } from "../engines/lichess-eval.js";
 import { getPositionEval, setPositionEval, positionCacheKey } from "../cache/index.js";
+import { fetchGameByUrl, fetchLastGame } from "../data/chesscom-api.js";
 import {
   detectCriticalMoments,
   computeAccuracy,
@@ -25,34 +26,55 @@ import type {
 // ---------------------------------------------------------------------------
 
 async function resolvePgn(input: AnalyzeGameInput): Promise<string> {
+  // 1. Raw PGN provided directly
   if (input.pgn) return input.pgn;
 
-  let id: string | null = null;
-
+  // 2. Lichess game ID
   if (input.lichess_id) {
-    id = input.lichess_id;
-  } else if (input.game_url) {
-    const lichessMatch = input.game_url.match(/lichess\.org\/([a-zA-Z0-9]{8})/);
-    if (lichessMatch) {
-      id = lichessMatch[1] ?? null;
-    }
-    // Chess.com games are in the archive, not directly accessible by ID in PGN format
-    // For Chess.com URLs we'd need the archive — fall back to an error for MVP
-    if (!id) {
-      throw new Error(
-        "Chess.com game URLs are not yet supported for direct import. " +
-          "Please paste the PGN directly (Game → Share → Copy PGN)."
-      );
-    }
+    const { data } = await axios.get<string>(
+      `https://lichess.org/game/export/${input.lichess_id}?evals=0&clocks=0`,
+      { responseType: "text", headers: { Accept: "application/x-chess-pgn" } }
+    );
+    return data;
   }
 
-  if (!id) throw new Error("No PGN source provided.");
+  // 3. Game URL — detect platform and fetch accordingly
+  if (input.game_url) {
+    const lichessMatch = input.game_url.match(/lichess\.org\/([a-zA-Z0-9]{8})/);
+    if (lichessMatch) {
+      const id = lichessMatch[1] as string;
+      const { data } = await axios.get<string>(
+        `https://lichess.org/game/export/${id}?evals=0&clocks=0`,
+        { responseType: "text", headers: { Accept: "application/x-chess-pgn" } }
+      );
+      return data;
+    }
 
-  const { data } = await axios.get<string>(
-    `https://lichess.org/game/export/${id}?evals=0&clocks=0`,
-    { responseType: "text" }
+    if (/chess\.com\/game\/(live|daily)\/\d+/.test(input.game_url)) {
+      if (!input.username) {
+        throw new Error(
+          "To look up a Chess.com game by URL, please also provide your Chess.com username."
+        );
+      }
+      return fetchGameByUrl(input.game_url, input.username);
+    }
+
+    throw new Error(
+      `Unrecognised game URL: "${input.game_url}". ` +
+        "Supported formats: https://www.chess.com/game/live/... or https://lichess.org/..."
+    );
+  }
+
+  // 4. Username only — fetch last game from chess.com
+  if (input.username) {
+    return fetchLastGame(input.username);
+  }
+
+  // 5. Nothing provided
+  throw new Error(
+    "Please provide your Chess.com username so I can fetch your last game, " +
+      "or supply a game URL, Lichess game ID, or PGN directly."
   );
-  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +200,11 @@ async function runAnalysis(input: AnalyzeGameInput): Promise<GameAnalysis> {
     opening: extractHeader(pgn, "Opening"),
     time_control: extractHeader(pgn, "TimeControl"),
     date: extractHeader(pgn, "Date"),
-    platform: input.lichess_id ?? input.game_url?.includes("lichess") ? "lichess" : "chess.com",
+    platform:
+      input.lichess_id !== undefined ||
+      (input.game_url !== undefined && input.game_url.includes("lichess"))
+        ? "lichess"
+        : "chess.com",
   };
 
   // Replay game collecting FENs
