@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import axios from "axios";
 import type { UCIAnalysisLine } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -7,6 +8,7 @@ import type { UCIAnalysisLine } from "../types/index.js";
 
 vi.mock("../engines/stockfish.js", () => ({
   analyzePosition: vi.fn(),
+  isReady: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock("../engines/lichess-eval.js", () => ({
@@ -182,21 +184,20 @@ describe("handleAnalyzeGame — URL resolution", () => {
   });
 
   it("attempts to fetch a Lichess game by ID from a URL", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      text: async () => "",
-    } as Response);
+    const axiosSpy = vi.spyOn(axios, "get").mockRejectedValueOnce(
+      Object.assign(new Error("404"), { response: { status: 404 } })
+    );
 
     await expect(
       handleAnalyzeGame({ game_url: "https://lichess.org/abcd1234" })
     ).rejects.toThrow();
 
-    // Verify it called fetch with the Lichess export endpoint
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("lichess.org/game/export/abcd1234")
+    // Verify it called axios with the Lichess export endpoint
+    expect(axiosSpy).toHaveBeenCalledWith(
+      expect.stringContaining("lichess.org/game/export/abcd1234"),
+      expect.anything()
     );
-    fetchSpy.mockRestore();
+    axiosSpy.mockRestore();
   });
 
   it("throws when no PGN source is provided", async () => {
