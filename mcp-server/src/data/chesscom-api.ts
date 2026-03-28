@@ -144,6 +144,52 @@ export async function getRecentGames(
   return allGames.slice(0, count);
 }
 
+/**
+ * Fetch a single Chess.com game by its URL.
+ * The chess.com public API has no single-game-by-ID endpoint, so we search
+ * the player's recent archive for a game whose URL contains the game ID.
+ *
+ * Supports live and daily game URLs:
+ *   https://www.chess.com/game/live/169033837793
+ *   https://www.chess.com/game/daily/123456789
+ */
+export async function fetchGameByUrl(
+  gameUrl: string,
+  username: string
+): Promise<string> {
+  const match = gameUrl.match(/chess\.com\/game\/(live|daily)\/(\d+)/);
+  if (!match) {
+    throw new Error(`Unrecognised Chess.com game URL: ${gameUrl}`);
+  }
+  const targetId = match[2] as string;
+
+  const games = await getRecentGames(username, 50);
+  const game = games.find((g) => g.url.includes(targetId));
+
+  if (!game) {
+    throw new Error(
+      `Game not found in the last 50 games for "${username}". ` +
+        "It may be older — try pasting the PGN directly (Game → Share → Copy PGN)."
+    );
+  }
+  return game.pgn;
+}
+
+/**
+ * Fetch the PGN of the most recent game played by a Chess.com user.
+ */
+export async function fetchLastGame(username: string): Promise<string> {
+  const games = await getRecentGames(username, 1);
+  const game = games[0];
+  if (!game) {
+    throw new Error(`No games found for Chess.com user "${username}".`);
+  }
+  if (!game.pgn) {
+    throw new Error(`PGN not available for the last game of "${username}".`);
+  }
+  return game.pgn;
+}
+
 // ---------------------------------------------------------------------------
 // Stats aggregation
 // ---------------------------------------------------------------------------
