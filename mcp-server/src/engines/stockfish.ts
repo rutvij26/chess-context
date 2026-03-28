@@ -23,6 +23,12 @@ interface StockfishInstance {
 let engine: StockfishInstance | null = null;
 let engineReady = false;
 
+// Resolves when the engine receives its first `readyok`
+let resolveEngineReady: (() => void) | null = null;
+const engineReadyPromise: Promise<void> = new Promise<void>((resolve) => {
+  resolveEngineReady = resolve;
+});
+
 // Pending analysis request
 interface PendingRequest {
   depth: number;
@@ -86,6 +92,7 @@ function onMessage(line: string): void {
 
   if (line === "readyok") {
     engineReady = true;
+    resolveEngineReady?.();
     processQueue();
     return;
   }
@@ -212,6 +219,30 @@ export async function initEngine(): Promise<void> {
 
 export function isReady(): boolean {
   return engineReady && engine !== null;
+}
+
+/**
+ * Returns a promise that resolves when the engine has sent `readyok`,
+ * or rejects with a clear error if `timeoutMs` elapses first.
+ */
+export function waitUntilReady(timeoutMs = 90_000): Promise<void> {
+  if (engineReady) return Promise.resolve();
+
+  return Promise.race([
+    engineReadyPromise,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              `Stockfish engine did not initialize within ${timeoutMs}ms. ` +
+                "Please retry in a moment — the engine is still warming up."
+            )
+          ),
+        timeoutMs
+      )
+    ),
+  ]);
 }
 
 export async function analyzePosition(

@@ -4,6 +4,7 @@ export const config = {
     quietDepth: parseInt(process.env["STOCKFISH_QUIET_DEPTH"] ?? "12"),
     maxDepth: parseInt(process.env["STOCKFISH_MAX_DEPTH"] ?? "20"),
     timeout: parseInt(process.env["STOCKFISH_TIMEOUT"] ?? "30000"),
+    readinessTimeout: Number(process.env["STOCKFISH_READINESS_TIMEOUT"]) || 90_000,
     defaultMultiPv: 3,
   },
   lichess: {
