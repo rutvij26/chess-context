@@ -182,11 +182,11 @@ export async function initEngine(): Promise<void> {
   );
 
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const InitEngine = require(sfPath) as (mod: {
+  const InitEngine = require(sfPath) as () => (mod: {
     locateFile: (path: string) => string;
   }) => Promise<StockfishInstance>;
 
-  engine = await InitEngine({
+  engine = await InitEngine()({
     locateFile: (path: string) => {
       if (path.endsWith(".wasm")) return wasmPath;
       return path;

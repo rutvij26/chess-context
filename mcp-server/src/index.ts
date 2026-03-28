@@ -94,13 +94,16 @@ server.registerTool(
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  console.error("[ChessContext] Initializing Stockfish engine...");
-  await initEngine();
-  console.error("[ChessContext] Engine ready. Starting MCP server...");
-
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("[ChessContext] MCP server running on stdio.");
+
+  // Initialize Stockfish after the MCP handshake so we don't block the
+  // initialize request (WASM load can take 30-60s on first run).
+  console.error("[ChessContext] Initializing Stockfish engine...");
+  initEngine()
+    .then(() => console.error("[ChessContext] Stockfish engine ready."))
+    .catch((err: unknown) => console.error("[ChessContext] Stockfish init failed:", err));
 }
 
 // Graceful shutdown

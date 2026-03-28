@@ -1,3 +1,4 @@
+import axios from "axios";
 import { config } from "../config.js";
 import { PlayerNotFoundError } from "./chesscom-api.js";
 import type {
@@ -99,53 +100,53 @@ function parseNdjson(text: string): LichessGame[] {
 // ---------------------------------------------------------------------------
 
 export async function getProfile(username: string): Promise<LichessUser> {
-  const response = await fetch(
-    `${config.lichess.baseUrl}/api/user/${encodeURIComponent(username)}`,
-    {
-      headers: {
-        Accept: "application/json",
-        ...(config.lichess.token
-          ? { Authorization: `Bearer ${config.lichess.token}` }
-          : {}),
-      },
+  try {
+    const { data } = await axios.get<LichessUser>(
+      `${config.lichess.baseUrl}/api/user/${encodeURIComponent(username)}`,
+      {
+        headers: {
+          Accept: "application/json",
+          ...(config.lichess.token
+            ? { Authorization: `Bearer ${config.lichess.token}` }
+            : {}),
+        },
+      }
+    );
+    return data;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      throw new PlayerNotFoundError(username, "lichess");
     }
-  );
-
-  if (response.status === 404) {
-    throw new PlayerNotFoundError(username, "lichess");
+    if (axios.isAxiosError(err)) {
+      throw new Error(`Lichess API error: ${err.response?.status ?? "unknown"}`);
+    }
+    throw err;
   }
-
-  if (!response.ok) {
-    throw new Error(`Lichess API error: ${response.status}`);
-  }
-
-  return (await response.json()) as LichessUser;
 }
 
 export async function getRecentGames(
   username: string,
   count = 50
 ): Promise<LichessGame[]> {
-  const url = new URL(
-    `${config.lichess.baseUrl}/api/games/user/${encodeURIComponent(username)}`
-  );
-  url.searchParams.set("max", String(count));
-  url.searchParams.set("opening", "true");
-  url.searchParams.set("moves", "true");
-  url.searchParams.set("rated", "true");
-
-  const response = await fetch(url.toString(), { headers: buildHeaders() });
-
-  if (response.status === 404) {
-    throw new PlayerNotFoundError(username, "lichess");
+  try {
+    const { data } = await axios.get<string>(
+      `${config.lichess.baseUrl}/api/games/user/${encodeURIComponent(username)}`,
+      {
+        headers: buildHeaders(),
+        params: { max: count, opening: "true", moves: "true", rated: "true" },
+        responseType: "text",
+      }
+    );
+    return parseNdjson(data);
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      throw new PlayerNotFoundError(username, "lichess");
+    }
+    if (axios.isAxiosError(err)) {
+      throw new Error(`Lichess API error: ${err.response?.status ?? "unknown"}`);
+    }
+    throw err;
   }
-
-  if (!response.ok) {
-    throw new Error(`Lichess API error: ${response.status}`);
-  }
-
-  const text = await response.text();
-  return parseNdjson(text);
 }
 
 // ---------------------------------------------------------------------------

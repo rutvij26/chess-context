@@ -1,3 +1,4 @@
+import axios from "axios";
 import { config } from "../config.js";
 import type {
   PlayerStats,
@@ -64,27 +65,25 @@ export interface ChessComGame {
 
 async function fetchJson<T>(url: string, retries = 3): Promise<T> {
   for (let attempt = 1; attempt <= retries; attempt++) {
-    const response = await fetch(url, {
-      headers: { Accept: "application/json" },
-    });
-
-    if (response.status === 404) {
-      throw new Error("NOT_FOUND");
-    }
-
-    if (response.status === 429) {
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1000 * attempt));
-        continue;
+    try {
+      const { data } = await axios.get<T>(url, {
+        headers: { Accept: "application/json" },
+      });
+      return data;
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        if (err.response?.status === 404) throw new Error("NOT_FOUND");
+        if (err.response?.status === 429) {
+          if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, 1000 * attempt));
+            continue;
+          }
+          throw new Error("Rate limited by Chess.com API");
+        }
+        throw new Error(`Chess.com API error: ${err.response?.status ?? "unknown"}`);
       }
-      throw new Error("Rate limited by Chess.com API");
+      throw err;
     }
-
-    if (!response.ok) {
-      throw new Error(`Chess.com API error: ${response.status}`);
-    }
-
-    return (await response.json()) as T;
   }
   throw new Error("All retries exhausted");
 }

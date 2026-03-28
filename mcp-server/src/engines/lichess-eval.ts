@@ -1,3 +1,4 @@
+import axios from "axios";
 import { config } from "../config.js";
 import type { UCIAnalysisLine } from "../types/index.js";
 
@@ -34,24 +35,17 @@ export async function getCloudEval(
     headers["Authorization"] = `Bearer ${config.lichess.token}`;
   }
 
-  let response: Response;
+  let data: LichessCloudEvalResponse;
   try {
-    response = await fetch(url.toString(), { headers });
+    const result = await axios.get<LichessCloudEvalResponse>(url.toString(), { headers });
+    data = result.data;
   } catch (err) {
-    console.error("[LichessEval] Network error:", err);
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return null; // Position not in cloud database
+    }
+    console.error("[LichessEval] API error:", err);
     return null;
   }
-
-  if (response.status === 404) {
-    return null; // Position not in cloud database
-  }
-
-  if (!response.ok) {
-    console.error(`[LichessEval] API error: ${response.status}`);
-    return null;
-  }
-
-  const data = (await response.json()) as LichessCloudEvalResponse;
 
   return data.pvs.map((pv, index) => ({
     depth: data.depth,
