@@ -1,0 +1,23 @@
+name: Stale
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-issue-message: "No activity in 60 days. Labeling as stale — will close in 14 days unless updated."
+          stale-pr-message: "No activity in 30 days. Labeling as stale — will close in 14 days unless updated."
+          close-issue-message: "Closed due to inactivity. Reopen if still relevant."
+          close-pr-message: "Closed due to inactivity. Reopen if still relevant."
+          days-before-issue-stale: 60
+          days-before-pr-stale: 30
+          days-before-close: 14
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: "pinned,security"
