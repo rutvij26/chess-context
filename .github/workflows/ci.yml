@@ -28,3 +28,7 @@ jobs:
       - name: Build
         working-directory: mcp-server
         run: npm run build
+
+      - name: Test
+        working-directory: mcp-server
+        run: npm test
