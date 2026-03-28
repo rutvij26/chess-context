@@ -1,6 +1,6 @@
 import axios from "axios";
 import { Chess } from "chess.js";
-import { analyzePosition as stockfishAnalyze, isReady as stockfishReady } from "../engines/stockfish.js";
+import { analyzePosition as stockfishAnalyze, isReady as stockfishReady, waitUntilReady } from "../engines/stockfish.js";
 import { getCloudEval } from "../engines/lichess-eval.js";
 import { getPositionEval, setPositionEval, positionCacheKey } from "../cache/index.js";
 import {
@@ -149,6 +149,16 @@ export async function handleAnalyzeGame(
 }
 
 async function runAnalysis(input: AnalyzeGameInput): Promise<GameAnalysis> {
+  try {
+    await waitUntilReady(config.stockfish.readinessTimeout);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Stockfish engine is not ready.";
+    throw new Error(
+      `Cannot analyze game: ${msg} ` +
+        "The engine needs 30–90 seconds to initialize after server startup."
+    );
+  }
+
   const pgn = await resolvePgn(input);
   const depth = input.depth ?? config.stockfish.defaultDepth;
 

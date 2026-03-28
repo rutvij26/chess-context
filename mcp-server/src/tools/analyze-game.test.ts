@@ -9,6 +9,7 @@ import type { UCIAnalysisLine } from "../types/index.js";
 vi.mock("../engines/stockfish.js", () => ({
   analyzePosition: vi.fn(),
   isReady: vi.fn().mockReturnValue(true),
+  waitUntilReady: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../engines/lichess-eval.js", () => ({
