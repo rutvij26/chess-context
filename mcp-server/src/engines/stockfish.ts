@@ -174,11 +174,11 @@ function runAnalysis(
 export async function initEngine(): Promise<void> {
   const sfPath = join(
     __dirname,
-    "../../node_modules/stockfish/src/stockfish-nnue-16-single.js"
+    "../../node_modules/stockfish/bin/stockfish-18-single.js"
   );
   const wasmPath = join(
     __dirname,
-    "../../node_modules/stockfish/src/stockfish-nnue-16-single.wasm"
+    "../../node_modules/stockfish/bin/stockfish-18-single.wasm"
   );
 
   // eslint-disable-next-line @typescript-eslint/no-var-requires
