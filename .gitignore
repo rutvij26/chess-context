@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+mcp-server/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Syzygy tablebases (large binary files, download separately)
+data/tablebases/
+
+# Claude Code local settings
+.claude/settings.local.json
