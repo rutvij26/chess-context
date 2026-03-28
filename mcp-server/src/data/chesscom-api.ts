@@ -179,6 +179,7 @@ function extractOpenings(
 
     // White moves are tokens at even indices (0, 2, ...) after filtering numbers
     const moveParts = firstMoveLine
+      .replace(/\{[^}]*\}/g, " ")  // strip {[%clk ...]} and other PGN annotations
       .replace(/\d+\.\s*/g, " ")
       .trim()
       .split(/\s+/)

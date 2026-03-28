@@ -1,3 +1,4 @@
+import axios from "axios";
 import { Chess } from "chess.js";
 import { analyzePosition as stockfishAnalyze } from "../engines/stockfish.js";
 import { getCloudEval } from "../engines/lichess-eval.js";
@@ -46,11 +47,11 @@ async function resolvePgn(input: AnalyzeGameInput): Promise<string> {
 
   if (!id) throw new Error("No PGN source provided.");
 
-  const response = await fetch(`https://lichess.org/game/export/${id}?evals=0&clocks=0`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch game from Lichess: ${response.status}`);
-  }
-  return await response.text();
+  const { data } = await axios.get<string>(
+    `https://lichess.org/game/export/${id}?evals=0&clocks=0`,
+    { responseType: "text" }
+  );
+  return data;
 }
 
 // ---------------------------------------------------------------------------

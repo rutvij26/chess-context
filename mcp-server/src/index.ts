@@ -50,6 +50,24 @@ server.registerTool(
     inputSchema: AnalyzeGameInputSchema,
   },
   async (input) => {
+    if (!input.pgn && !input.game_url && !input.lichess_id) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: [
+              "To analyze a game, please provide one of the following:",
+              "",
+              "1. **Paste a PGN** — copy it from Chess.com (Game → Share → Copy PGN) or Lichess (Share & export → Copy PGN) and pass it as `pgn`.",
+              "2. **Lichess URL or game ID** — e.g. `https://lichess.org/abcd1234` as `game_url`, or just `abcd1234` as `lichess_id`.",
+              "3. **Chess.com URL** — paste the PGN directly (Chess.com game export via URL is not yet supported).",
+              "",
+              "Which would you like to use?",
+            ].join("\n"),
+          },
+        ],
+      };
+    }
     const result = await handleAnalyzeGame(input);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

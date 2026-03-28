@@ -70,30 +70,24 @@ export const AnalyzePositionInputSchema = z.object({
 });
 export type AnalyzePositionInput = z.infer<typeof AnalyzePositionInputSchema>;
 
-export const AnalyzeGameInputSchema = z
-  .object({
-    pgn: z.string().optional().describe("PGN string of the game"),
-    game_url: z
-      .string()
-      .optional()
-      .describe(
-        "Chess.com or Lichess game URL (e.g. https://lichess.org/abcd1234)"
-      ),
-    lichess_id: z
-      .string()
-      .optional()
-      .describe("Lichess game ID (8 characters, e.g. abcd1234)"),
-    depth: z
-      .number()
-      .int()
-      .min(1)
-      .max(25)
-      .optional()
-      .describe("Max analysis depth for critical positions (default: 18)"),
-  })
-  .refine((d) => d.pgn ?? d.game_url ?? d.lichess_id, {
-    message: "Provide at least one of: pgn, game_url, lichess_id",
-  });
+export const AnalyzeGameInputSchema = z.object({
+  pgn: z.string().optional().describe("PGN string of the game"),
+  game_url: z
+    .string()
+    .optional()
+    .describe("Chess.com or Lichess game URL (e.g. https://lichess.org/abcd1234)"),
+  lichess_id: z
+    .string()
+    .optional()
+    .describe("Lichess game ID (8 characters, e.g. abcd1234)"),
+  depth: z
+    .number()
+    .int()
+    .min(1)
+    .max(25)
+    .optional()
+    .describe("Max analysis depth for critical positions (default: 18)"),
+});
 export type AnalyzeGameInput = z.infer<typeof AnalyzeGameInputSchema>;
 
 export const GetPlayerStatsInputSchema = z.object({
