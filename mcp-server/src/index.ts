@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { initEngine, shutdown } from "./engines/stockfish.js";
+import { initPool, shutdownPool } from "./engines/stockfish-pool.js";
 import { handleAnalyzePosition } from "./tools/analyze-position.js";
 import { handleAnalyzeGame } from "./tools/analyze-game.js";
 import { handleGetPlayerStats } from "./tools/get-player-stats.js";
@@ -118,24 +119,28 @@ async function main(): Promise<void> {
 
   // Initialize Stockfish after the MCP handshake so we don't block the
   // initialize request (WASM load can take 30-60s on first run).
-  console.error("[ChessContext] Initializing Stockfish engine...");
-  initEngine()
-    .then(() => console.error("[ChessContext] Stockfish engine ready."))
-    .catch((err: unknown) => console.error("[ChessContext] Stockfish init failed:", err));
+  console.error("[ChessContext] Initializing Stockfish engine and worker pool...");
+  Promise.all([
+    initEngine()
+      .then(() => console.error("[ChessContext] Stockfish single-thread engine ready."))
+      .catch((err: unknown) => console.error("[ChessContext] Stockfish init failed:", err)),
+    initPool()
+      .then(() => console.error("[ChessContext] Stockfish worker pool ready."))
+      .catch((err: unknown) => console.error("[ChessContext] Stockfish pool init failed:", err)),
+  ]).catch(() => {
+    // Individual errors are already logged above
+  });
 }
 
 // Graceful shutdown
-process.on("SIGTERM", async () => {
+async function gracefulShutdown(): Promise<void> {
   console.error("[ChessContext] Shutting down...");
-  await shutdown();
+  await Promise.allSettled([shutdown(), shutdownPool()]);
   process.exit(0);
-});
+}
 
-process.on("SIGINT", async () => {
-  console.error("[ChessContext] Shutting down...");
-  await shutdown();
-  process.exit(0);
-});
+process.on("SIGTERM", () => { void gracefulShutdown(); });
+process.on("SIGINT", () => { void gracefulShutdown(); });
 
 main().catch((err: unknown) => {
   console.error("[ChessContext] Fatal error:", err);
