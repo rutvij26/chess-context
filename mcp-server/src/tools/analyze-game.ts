@@ -1,6 +1,6 @@
 import axios from "axios";
 import { Chess } from "chess.js";
-import { analyzePosition as stockfishAnalyze } from "../engines/stockfish.js";
+import { analyzePosition as stockfishAnalyze, isReady as stockfishReady } from "../engines/stockfish.js";
 import { getCloudEval } from "../engines/lichess-eval.js";
 import { getPositionEval, setPositionEval, positionCacheKey } from "../cache/index.js";
 import {
@@ -67,35 +67,6 @@ function extractHeader(pgn: string, tag: string): string {
 // Eval helpers
 // ---------------------------------------------------------------------------
 
-async function getEvalWithAdaptiveDepth(
-  fen: string,
-  prevEval: number | null,
-  depth: number,
-  isFirstOrLast: boolean
-): Promise<{ lines: UCIAnalysisLine[]; usedCloud: boolean }> {
-  // Adaptive depth: use quiet depth for positions that haven't changed much
-  let targetDepth = depth;
-  if (!isFirstOrLast && prevEval !== null) {
-    // Will be updated after we get the eval
-  }
-
-  const multiPv = 1;
-  const cacheKey = positionCacheKey(fen, targetDepth, multiPv);
-  const cached = getPositionEval(cacheKey);
-  if (cached) return { lines: cached, usedCloud: false };
-
-  // Try cloud eval
-  const cloudLines = await getCloudEval(fen, multiPv);
-  if (cloudLines && cloudLines.length > 0) {
-    setPositionEval(cacheKey, cloudLines);
-    return { lines: cloudLines, usedCloud: true };
-  }
-
-  // Local Stockfish with adaptive depth
-  const lines = await stockfishAnalyze(fen, { depth: targetDepth, multiPv });
-  if (lines.length > 0) setPositionEval(cacheKey, lines);
-  return { lines, usedCloud: false };
-}
 
 function lineToEvalCp(line: UCIAnalysisLine): number {
   if (line.score_mate !== null) {
@@ -161,9 +132,23 @@ function buildPhaseBreakdown(
 // Main handler
 // ---------------------------------------------------------------------------
 
+const ANALYSIS_TIMEOUT_MS = 50_000;
+
 export async function handleAnalyzeGame(
   input: AnalyzeGameInput
 ): Promise<GameAnalysis> {
+  return Promise.race([
+    runAnalysis(input),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("Game analysis timed out after 50s. Try a shorter game or paste the PGN directly.")),
+        ANALYSIS_TIMEOUT_MS
+      )
+    ),
+  ]);
+}
+
+async function runAnalysis(input: AnalyzeGameInput): Promise<GameAnalysis> {
   const pgn = await resolvePgn(input);
   const depth = input.depth ?? config.stockfish.defaultDepth;
 
@@ -208,27 +193,53 @@ export async function handleAnalyzeGame(
   }
 
   // Analyse each position
+  // Phase 1: cloud-eval with bounded concurrency to avoid Lichess rate-limits
+  const CLOUD_CONCURRENCY = 4;
+  const cloudResults: (UCIAnalysisLine[] | null)[] = new Array(positions.length).fill(null);
+
+  for (let i = 0; i < positions.length; i += CLOUD_CONCURRENCY) {
+    const batch = positions.slice(i, i + CLOUD_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(async (pos) => {
+        const cacheKey = positionCacheKey(pos.fen, depth, 1);
+        const cached = getPositionEval(cacheKey);
+        if (cached) return cached;
+        const lines = await getCloudEval(pos.fen, 1).catch(() => null);
+        if (lines && lines.length > 0) setPositionEval(cacheKey, lines);
+        return lines;
+      })
+    );
+    batchResults.forEach((r, j) => { cloudResults[i + j] = r; });
+  }
+
+  // Phase 2: sequential Stockfish only for cloud-eval misses, at quiet depth
+  const quietDepth = config.stockfish.quietDepth;
   const evals: number[] = new Array(positions.length).fill(0);
   const bestMoves: string[] = new Array(positions.length).fill("");
+  let evalsCovered = 0;
 
   for (let i = 0; i < positions.length; i++) {
     const pos = positions[i]!;
-    const isEdge = i === 0 || i === positions.length - 1;
-    const prevEval = i > 0 ? (evals[i - 1] ?? null) : null;
+    let lines = cloudResults[i];
 
-    const { lines } = await getEvalWithAdaptiveDepth(
-      pos.fen,
-      prevEval,
-      depth,
-      isEdge
-    );
+    if (!lines || lines.length === 0) {
+      if (stockfishReady()) {
+        lines = await stockfishAnalyze(pos.fen, { depth: quietDepth, multiPv: 1 }).catch(() => []);
+      }
+    }
 
-    if (lines.length > 0) {
+    if (lines && lines.length > 0) {
       const line = lines[0]!;
       evals[i] = lineToEvalCp(line);
       bestMoves[i] = line.pv[0] ?? "";
+      evalsCovered++;
     }
   }
+
+  const evalCoverage = positions.length > 0
+    ? Math.round((evalsCovered / positions.length) * 100)
+    : 0;
+  const lowCoverage = evalCoverage < 30;
 
   // Convert UCI best moves to SAN and build MoveRecords
   const moveRecords: MoveRecord[] = [];
@@ -281,20 +292,26 @@ export async function handleAnalyzeGame(
   if (criticalMoments.filter((m) => m.category === "blunder" && m.color === "black").length > 1) {
     patterns.push("Black made multiple blunders");
   }
-  if (whiteAccuracy > 85) {
+  if (!lowCoverage && whiteAccuracy > 85) {
     patterns.push("White played with high accuracy throughout the game");
   }
-  if (blackAccuracy > 85) {
+  if (!lowCoverage && blackAccuracy > 85) {
     patterns.push("Black played with high accuracy throughout the game");
   }
   if (mistakeCategories.opening > 0) {
     patterns.push(`Opening phase contained ${mistakeCategories.opening} significant inaccurac${mistakeCategories.opening === 1 ? "y" : "ies"}`);
   }
 
+  if (lowCoverage) {
+    patterns.push(
+      `⚠️ Low eval coverage (${evalCoverage}% of positions evaluated) — these positions are not in the Lichess cloud database and Stockfish is still warming up. Accuracy figures and critical moments may be incomplete. Try again in a minute for full analysis.`
+    );
+  }
+
   const summary: GameSummary = {
     total_moves: history.length,
-    white_accuracy: whiteAccuracy,
-    black_accuracy: blackAccuracy,
+    white_accuracy: lowCoverage ? 0 : whiteAccuracy,
+    black_accuracy: lowCoverage ? 0 : blackAccuracy,
     phase_breakdown: buildPhaseBreakdown(moveRecords),
     mistake_categories: mistakeCategories,
   };
