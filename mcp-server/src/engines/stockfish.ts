@@ -194,17 +194,21 @@ export async function initEngine(): Promise<void> {
     return path;
   };
 
-  // Stockfish 18: double-call init pattern
+  // Stockfish 18: double-call init pattern.
+  // The options object passed to the second factory call becomes the module object (`l`).
+  // Stockfish's _main() outputs "Stockfish 18 by..." via `l.print` → `l.listener || console.log`.
+  // Setting `listener` in the options before calling factory ensures the banner is routed
+  // to our handler (stderr) instead of console.log (stdout = MCP JSON-RPC channel).
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const Stockfish = require(sfPath) as (mod: {
     locateFile: (path: string) => string;
-  }) => Promise<(mod: { locateFile: (path: string) => string }) => Promise<StockfishInstance>>;
+  }) => Promise<(mod: { locateFile: (path: string) => string; listener: (line: string) => void }) => Promise<StockfishInstance>>;
 
   const factory = await Stockfish({ locateFile });
-  engine = await factory({ locateFile });
+  // Pre-set listener so it is active from the first moment _main() runs inside WASM
+  const moduleOptions = { locateFile, listener: onMessage };
+  engine = await factory(moduleOptions);
 
-  // Override listener BEFORE awaiting engine.ready to prevent stdout pollution
-  engine.listener = onMessage;
   await engine.ready;
 
   engine.ccall("command", null, ["string"], ["uci"]);
