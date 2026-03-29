@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { initEngine, shutdown } from "./engines/stockfish.js";
-import { initPool, shutdownPool } from "./engines/stockfish-pool.js";
+import { shutdown } from "./engines/stockfish.js";
+import { shutdownPool } from "./engines/stockfish-pool.js";
+import { initRouter, shutdownRouter } from "./engines/engine-router.js";
 import { handleAnalyzePosition } from "./tools/analyze-position.js";
 import { handleAnalyzeGame } from "./tools/analyze-game.js";
 import { handleGetPlayerStats } from "./tools/get-player-stats.js";
@@ -99,17 +100,17 @@ async function main(): Promise<void> {
   await server.connect(transport);
   console.error("[ChessContext] MCP server running on stdio.");
 
-  // Initialize Stockfish after the MCP handshake so we don't block the
-  // initialize request (WASM load can take 30-60s on first run).
-  console.error("[ChessContext] Initializing Stockfish engine...");
-  initEngine()
-    .then(() => console.error("[ChessContext] Stockfish engine ready."))
-    .catch((err: unknown) => console.error("[ChessContext] Stockfish init failed:", err));
+  // Initialize engine after the MCP handshake so we don't block the
+  // initialize request. Router checks Docker first (fast), then falls back
+  // to WASM if Docker is unavailable.
+  console.error("[ChessContext] Initializing engine (Docker preferred, WASM fallback)...");
+  initRouter();
 }
 
 // Graceful shutdown
 async function gracefulShutdown(): Promise<void> {
   console.error("[ChessContext] Shutting down...");
+  shutdownRouter();
   await Promise.allSettled([shutdown(), shutdownPool()]);
   process.exit(0);
 }

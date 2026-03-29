@@ -49,13 +49,15 @@ his preparation. Aim to trade pieces and reach a technical endgame.
 
 ## Quick Start
 
-**Prerequisites:** Node.js 20+
+**Prerequisites:** Node.js 20+, Docker Desktop *(recommended)*
 
 ```bash
-git clone https://github.com/your-username/mcp-chess.git
-cd mcp-chess/mcp-server
-npm install
-npm run build
+git clone https://github.com/rutvij26/chess-context.git
+cd chess-context/mcp-server
+npm install && npm run build
+
+# Start the Stockfish engine container (fast, multi-threaded)
+docker compose up -d
 ```
 
 Add to your Claude Desktop config (`%APPDATA%\Claude\claude_desktop_config.json` on Windows, `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
@@ -65,13 +67,15 @@ Add to your Claude Desktop config (`%APPDATA%\Claude\claude_desktop_config.json`
   "mcpServers": {
     "chess-context": {
       "command": "node",
-      "args": ["/absolute/path/to/mcp-chess/mcp-server/dist/index.js"]
+      "args": ["/absolute/path/to/chess-context/mcp-server/dist/index.js"]
     }
   }
 }
 ```
 
 Restart Claude Desktop. You're ready — try: *"Analyze the starting chess position."*
+
+> **No Docker?** The server falls back to a built-in WASM engine automatically — but expect a 30–60s warmup and slower game analysis.
 
 For detailed setup instructions, see [docs/installation.md](docs/installation.md).
 
@@ -92,26 +96,27 @@ Full tool schemas and example outputs: [docs/tools.md](docs/tools.md)
 
 ## Configuration
 
-Set these environment variables to customize behavior:
+Set these environment variables on the **MCP server** to customize behavior:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `STOCKFISH_API_URL` | `http://localhost:8090` | URL of Docker Stockfish engine |
 | `STOCKFISH_DEPTH` | `18` | Default search depth for position analysis |
 | `STOCKFISH_QUIET_DEPTH` | `12` | Depth for quiet positions in game analysis |
 | `STOCKFISH_TIMEOUT` | `30000` | Engine timeout in milliseconds |
+| `ENABLE_LICHESS_CLOUD` | `false` | Try Lichess cloud eval before local engine |
 | `LICHESS_TOKEN` | *(none)* | Optional Lichess API token for higher rate limits |
 
-Add to the MCP server config:
+The **Docker container** has its own env vars in `mcp-server/docker-compose.yml` (`STOCKFISH_THREADS`, `STOCKFISH_HASH`).
 
 ```json
 {
   "mcpServers": {
     "chess-context": {
       "command": "node",
-      "args": ["/path/to/mcp-chess/mcp-server/dist/index.js"],
+      "args": ["/path/to/chess-context/mcp-server/dist/index.js"],
       "env": {
-        "LICHESS_TOKEN": "your_token_here",
-        "STOCKFISH_DEPTH": "20"
+        "LICHESS_TOKEN": "your_token_here"
       }
     }
   }
@@ -133,12 +138,13 @@ Add to the MCP server config:
 │  Narrative Generator · Critical Moments         │
 ├─────────────────────────────────────────────────┤
 │            LAYER 1: FOUNDATION                  │
-│  Stockfish WASM · Lichess Cloud Eval            │
-│  Chess.com API · Lichess API · LRU Cache        │
+│  Engine Router · Docker Stockfish (primary)     │
+│  WASM Stockfish (fallback) · LRU Cache          │
+│  Chess.com API · Lichess API                    │
 └─────────────────────────────────────────────────┘
 ```
 
-**Layer 1** handles raw compute: Stockfish engine (WASM, no system binary needed), Lichess cloud evaluation (instant, free for known positions), and Chess.com/Lichess API clients.
+**Layer 1** handles raw compute. The **Engine Router** automatically selects the fastest available engine: Docker Stockfish (native binary, multi-threaded, HTTP) → WASM worker pool → single-threaded WASM. Chess.com/Lichess API clients handle game data.
 
 **Layer 2** transforms raw numbers into meaning: game phase detection, 10 pawn structure types, 15 tactical/strategic themes, template-based narratives, and critical moment detection (blunders, mistakes, missed wins).
 

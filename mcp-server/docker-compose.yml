@@ -1,0 +1,22 @@
+services:
+  stockfish:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mcp-chess-stockfish
+    container_name: stockfish
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      STOCKFISH_THREADS: "4"   # CPU threads for Stockfish (tune to your machine)
+      STOCKFISH_HASH: "256"    # Hash table size in MB
+      STOCKFISH_PORT: "8090"
+      STOCKFISH_TIMEOUT: "30000"
+    healthcheck:
+      test: >
+        node -e "require('http').get('http://localhost:8090/health',r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{const b=JSON.parse(d);process.exit(b.status==='ready'?0:1)}catch{process.exit(1)}})}).on('error',()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

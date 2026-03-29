@@ -1,9 +1,6 @@
 import axios from "axios";
 import { Chess } from "chess.js";
-import { analyzePosition as stockfishAnalyze, isReady as stockfishReady, waitUntilReady } from "../engines/stockfish.js";
-import { analyzePositionParallel, isPoolReady } from "../engines/stockfish-pool.js";
-import { getCloudEval } from "../engines/lichess-eval.js";
-import { getPositionEval, setPositionEval, positionCacheKey } from "../cache/index.js";
+import { waitUntilRouterReady, getEval } from "../engines/engine-router.js";
 import { fetchGameByUrl, fetchLastGame } from "../data/chesscom-api.js";
 import {
   detectCriticalMoments,
@@ -173,17 +170,13 @@ export async function handleAnalyzeGame(
 
 async function runAnalysis(input: AnalyzeGameInput): Promise<GameAnalysis> {
   try {
-    await waitUntilReady(config.stockfish.readinessTimeout);
+    await waitUntilRouterReady(config.stockfish.readinessTimeout);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Stockfish engine is not ready.";
-    throw new Error(
-      `Cannot analyze game: ${msg} ` +
-        "The engine needs 30–90 seconds to initialize after server startup."
-    );
+    const msg = err instanceof Error ? err.message : "Engine is not ready.";
+    throw new Error(`Cannot analyze game: ${msg}`);
   }
 
   const pgn = await resolvePgn(input);
-  const depth = input.depth ?? config.stockfish.defaultDepth;
 
   // Parse PGN
   const board = new Chess();
@@ -229,81 +222,23 @@ async function runAnalysis(input: AnalyzeGameInput): Promise<GameAnalysis> {
     });
   }
 
-  // Analyse each position
-  // Phase 1: cloud-eval with bounded concurrency to avoid Lichess rate-limits
-  const CLOUD_CONCURRENCY = 4;
-  const cloudResults: (UCIAnalysisLine[] | null)[] = new Array(positions.length).fill(null);
-
-  for (let i = 0; i < positions.length; i += CLOUD_CONCURRENCY) {
-    const batch = positions.slice(i, i + CLOUD_CONCURRENCY);
-    const batchResults = await Promise.all(
-      batch.map(async (pos) => {
-        const cacheKey = positionCacheKey(pos.fen, depth, 1);
-        const cached = getPositionEval(cacheKey);
-        if (cached) return cached;
-        const lines = await getCloudEval(pos.fen, 1).catch(() => null);
-        if (lines && lines.length > 0) setPositionEval(cacheKey, lines);
-        return lines;
-      })
-    );
-    batchResults.forEach((r, j) => { cloudResults[i + j] = r; });
-  }
-
-  // Phase 2: parallel Stockfish fallback for cloud-eval misses, at quiet depth.
-  // Use the worker pool when available (parallel), otherwise fall back to the
-  // single-threaded engine (sequential) so the path still works during warmup.
+  // Evaluate all positions concurrently via the engine router.
+  // Docker Stockfish handles many positions in parallel (HTTP queue); WASM pool
+  // is used as fallback. Cache hits are served instantly.
   const quietDepth = config.stockfish.quietDepth;
-  const evals: number[] = new Array(positions.length).fill(0);
-  const bestMoves: string[] = new Array(positions.length).fill("");
-  let evalsCovered = 0;
 
-  // Identify positions that need Stockfish
-  const missIndices: number[] = [];
-  for (let i = 0; i < positions.length; i++) {
-    const lines = cloudResults[i];
-    if (!lines || lines.length === 0) {
-      missIndices.push(i);
-    }
-  }
+  const allLines = await Promise.all(
+    positions.map((pos) =>
+      getEval(pos.fen, quietDepth, 1).catch((): UCIAnalysisLine[] => [])
+    )
+  );
 
-  // Analyse all misses in parallel when the pool is ready
-  if (missIndices.length > 0) {
-    const usePool = isPoolReady();
-    const useSequential = !usePool && stockfishReady();
-
-    const analysisPromises = missIndices.map((i) => {
-      const pos = positions[i]!;
-      if (usePool) {
-        return analyzePositionParallel(pos.fen, { depth: quietDepth, multiPv: 1 }).catch(
-          (): UCIAnalysisLine[] => []
-        );
-      }
-      if (useSequential) {
-        return stockfishAnalyze(pos.fen, { depth: quietDepth, multiPv: 1 }).catch(
-          (): UCIAnalysisLine[] => []
-        );
-      }
-      return Promise.resolve<UCIAnalysisLine[]>([]);
-    });
-
-    const missResults = await Promise.all(analysisPromises);
-
-    for (let j = 0; j < missIndices.length; j++) {
-      const i = missIndices[j]!;
-      cloudResults[i] = missResults[j] ?? [];
-    }
-  }
-
-  // Merge cloud + Stockfish results into evals / bestMoves arrays
-  for (let i = 0; i < positions.length; i++) {
-    const lines = cloudResults[i];
-    if (lines && lines.length > 0) {
-      const line = lines[0]!;
-      evals[i] = lineToEvalCp(line);
-      bestMoves[i] = line.pv[0] ?? "";
-      evalsCovered++;
-    }
-  }
+  const evals: number[] = allLines.map((lines) => {
+    const line = lines[0];
+    return line ? lineToEvalCp(line) : 0;
+  });
+  const bestMoves: string[] = allLines.map((lines) => lines[0]?.pv[0] ?? "");
+  const evalsCovered = allLines.filter((lines) => lines.length > 0).length;
 
   const evalCoverage = positions.length > 0
     ? Math.round((evalsCovered / positions.length) * 100)
@@ -312,7 +247,6 @@ async function runAnalysis(input: AnalyzeGameInput): Promise<GameAnalysis> {
 
   // Convert UCI best moves to SAN and build MoveRecords
   const moveRecords: MoveRecord[] = [];
-  const sanBoard = new Chess();
 
   for (let i = 1; i < positions.length; i++) {
     const pos = positions[i]!;
