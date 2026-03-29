@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 mcp-server/dist/
+mcp-server/coverage/
 
 # Environment
 .env
