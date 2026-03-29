@@ -45,12 +45,7 @@ export async function analyzePosition(
 ): Promise<UCIAnalysisLine[]> {
   const resp = await axios.post<AnalyzeResponse>(
     `${config.engine.apiUrl}/analyze`,
-    {
-      fen,
-      depth: options.depth,
-      multiPv: options.multiPv,
-      timeoutMs: config.stockfish.timeout,
-    },
+    { fen, depth: options.depth, multiPv: options.multiPv },
     { timeout: config.stockfish.timeout + 5000 }
   );
   return resp.data.lines;

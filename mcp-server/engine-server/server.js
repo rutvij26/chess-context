@@ -34,7 +34,7 @@ let currentRequest = null;
  * @property {string} fen
  * @property {number} depth
  * @property {number} multiPv
- * @property {number} timeoutMs
+ * @property {number} timeoutMs  - always DEFAULT_TIMEOUT_MS, never caller-supplied
  * @property {Map<number, object>} lines
  * @property {(result: {lines: object[]}) => void} resolve
  * @property {(err: Error) => void} reject
@@ -157,7 +157,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.post("/analyze", (req, res) => {
-  const { fen, depth = 18, multiPv = 3, timeoutMs = DEFAULT_TIMEOUT_MS } = req.body;
+  const { fen, depth = 18, multiPv = 3 } = req.body;
 
   if (!fen || typeof fen !== "string") {
     res.status(400).json({ error: "fen is required and must be a string" });
@@ -169,7 +169,9 @@ app.post("/analyze", (req, res) => {
     fen,
     depth: Math.min(Math.max(parseInt(String(depth), 10) || 18, 1), 24),
     multiPv: Math.min(Math.max(parseInt(String(multiPv), 10) || 3, 1), 5),
-    timeoutMs: Math.min(parseInt(String(timeoutMs), 10) || DEFAULT_TIMEOUT_MS, 120_000),
+    // Timeout is always server-controlled via STOCKFISH_TIMEOUT env var — never
+    // caller-supplied, to prevent resource exhaustion from crafted requests.
+    timeoutMs: DEFAULT_TIMEOUT_MS,
     lines: new Map(),
     resolve: (result) => res.json(result),
     reject: (err) => res.status(500).json({ error: err.message }),
