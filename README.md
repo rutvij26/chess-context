@@ -1,5 +1,7 @@
 # ChessContext MCP
 
+[![codecov](https://codecov.io/gh/rutvij26/chess-context/branch/main/graph/badge.svg)](https://codecov.io/gh/rutvij26/chess-context)
+
 **Semantic chess intelligence for Claude.** Not just engine numbers — context, narrative, and strategic insight.
 
 Instead of `best move: Nf3 (+0.4)`, ChessContext gives Claude:
