@@ -101,17 +101,10 @@ async function main(): Promise<void> {
 
   // Initialize Stockfish after the MCP handshake so we don't block the
   // initialize request (WASM load can take 30-60s on first run).
-  console.error("[ChessContext] Initializing Stockfish engine and worker pool...");
-  Promise.all([
-    initEngine()
-      .then(() => console.error("[ChessContext] Stockfish single-thread engine ready."))
-      .catch((err: unknown) => console.error("[ChessContext] Stockfish init failed:", err)),
-    initPool()
-      .then(() => console.error("[ChessContext] Stockfish worker pool ready."))
-      .catch((err: unknown) => console.error("[ChessContext] Stockfish pool init failed:", err)),
-  ]).catch(() => {
-    // Individual errors are already logged above
-  });
+  console.error("[ChessContext] Initializing Stockfish engine...");
+  initEngine()
+    .then(() => console.error("[ChessContext] Stockfish engine ready."))
+    .catch((err: unknown) => console.error("[ChessContext] Stockfish init failed:", err));
 }
 
 // Graceful shutdown
