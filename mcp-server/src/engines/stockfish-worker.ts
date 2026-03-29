@@ -38,12 +38,13 @@ interface WorkerData {
 const { stockfishBinDir, timeout } = workerData as WorkerData;
 
 // ---------------------------------------------------------------------------
-// Types for the raw stockfish.js instance
+// Types for the raw stockfish.js instance (Stockfish 18 API)
 // ---------------------------------------------------------------------------
 
 interface StockfishInstance {
-  addMessageListener(handler: (line: string) => void): void;
-  postMessage(cmd: string): void;
+  listener: (line: string) => void;
+  ccall(name: string, returnType: null, argTypes: string[], args: unknown[]): void;
+  ready: Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +152,7 @@ function runAnalysis(
 
     const timer = setTimeout(() => {
       if (pending) {
-        engine?.postMessage("stop");
+        engine?.ccall("command", null, ["string"], ["stop"]);
         const err = new Error(`Stockfish worker timeout after ${timeout}ms`);
         const r = pending.reject;
         pending = null;
@@ -167,9 +168,9 @@ function runAnalysis(
       timer,
     };
 
-    engine.postMessage(`setoption name MultiPV value ${multiPv}`);
-    engine.postMessage(`position fen ${fen}`);
-    engine.postMessage(`go depth ${depth}`);
+    engine.ccall("command", null, ["string"], [`setoption name MultiPV value ${multiPv}`]);
+    engine.ccall("command", null, ["string"], [`position fen ${fen}`]);
+    engine.ccall("command", null, ["string"], [`go depth ${depth}`]);
   });
 }
 
@@ -182,21 +183,27 @@ async function init(): Promise<void> {
   const wasmPath = join(stockfishBinDir, "stockfish-18-single.wasm");
 
   const require = createRequire(import.meta.url);
+
+  const locateFile = (path: string) => {
+    if (path.endsWith(".wasm")) return wasmPath;
+    return path;
+  };
+
+  // Stockfish 18: double-call init pattern
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const InitEngine = require(sfPath) as () => (mod: {
+  const Stockfish = require(sfPath) as (mod: {
     locateFile: (path: string) => string;
-  }) => Promise<StockfishInstance>;
+  }) => Promise<(mod: { locateFile: (path: string) => string }) => Promise<StockfishInstance>>;
 
-  engine = await InitEngine()({
-    locateFile: (path: string) => {
-      if (path.endsWith(".wasm")) return wasmPath;
-      return path;
-    },
-  });
+  const factory = await Stockfish({ locateFile });
+  engine = await factory({ locateFile });
 
-  engine.addMessageListener(onEngineMessage);
-  engine.postMessage("uci");
-  engine.postMessage("isready");
+  // Override listener BEFORE awaiting engine.ready to prevent stdout pollution
+  engine.listener = onEngineMessage;
+  await engine.ready;
+
+  engine.ccall("command", null, ["string"], ["uci"]);
+  engine.ccall("command", null, ["string"], ["isready"]);
 
   // Wait for readyok (signalled by setting engineReady = true and posting 'ready')
   await new Promise<void>((resolve) => {
@@ -218,7 +225,7 @@ port.on("message", async (msg: unknown) => {
   const message = msg as Record<string, unknown>;
 
   if (message["type"] === "shutdown") {
-    engine?.postMessage("quit");
+    engine?.ccall("command", null, ["string"], ["quit"]);
     process.exit(0);
   }
 
