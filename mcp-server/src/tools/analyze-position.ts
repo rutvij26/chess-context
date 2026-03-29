@@ -1,11 +1,5 @@
 import { Chess } from "chess.js";
-import { analyzePosition as stockfishAnalyze } from "../engines/stockfish.js";
-import { getCloudEval } from "../engines/lichess-eval.js";
-import {
-  getPositionEval,
-  setPositionEval,
-  positionCacheKey,
-} from "../cache/index.js";
+import { getEval } from "../engines/engine-router.js";
 import {
   classifyPhase,
   classifyPawnStructure,
@@ -19,7 +13,6 @@ import type {
   AnalyzePositionInput,
   PositionAnalysis,
   TopMove,
-  UCIAnalysisLine,
 } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -97,34 +90,6 @@ function buildMoveExplanation(board: Chess, san: string, pvSan: string[]): strin
   if (check) return `A checking move that forces the opponent to respond.${continuation}`;
   if (captures) return `A capture that changes the material balance.${continuation}`;
   return `A developing/positional move improving piece placement or pawn structure.${continuation}`;
-}
-
-// ---------------------------------------------------------------------------
-// Eval fetching with cache → cloud → Stockfish fallback
-// ---------------------------------------------------------------------------
-
-async function getEval(
-  fen: string,
-  depth: number,
-  multiPv: number
-): Promise<UCIAnalysisLine[]> {
-  const cacheKey = positionCacheKey(fen, depth, multiPv);
-  const cached = getPositionEval(cacheKey);
-  if (cached) return cached;
-
-  // Try Lichess cloud eval first (instant, free, high depth)
-  const cloudLines = await getCloudEval(fen, multiPv);
-  if (cloudLines && cloudLines.length > 0) {
-    setPositionEval(cacheKey, cloudLines);
-    return cloudLines;
-  }
-
-  // Fall back to local Stockfish
-  const lines = await stockfishAnalyze(fen, { depth, multiPv });
-  if (lines.length > 0) {
-    setPositionEval(cacheKey, lines);
-  }
-  return lines;
 }
 
 // ---------------------------------------------------------------------------

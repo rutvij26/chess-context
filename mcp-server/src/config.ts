@@ -7,6 +7,14 @@ export const config = {
     readinessTimeout: Number(process.env["STOCKFISH_READINESS_TIMEOUT"]) || 90_000,
     defaultMultiPv: 3,
   },
+  engine: {
+    // URL of the Docker Stockfish HTTP API. If unreachable, WASM is used as fallback.
+    apiUrl: process.env["STOCKFISH_API_URL"] ?? "http://localhost:8090",
+    // Threads to advertise to the Docker container (informational; set via container env).
+    threads: parseInt(process.env["STOCKFISH_THREADS"] ?? "4"),
+    // Set ENABLE_LICHESS_CLOUD=true to try Lichess cloud eval before the engine.
+    enableLichessCloud: process.env["ENABLE_LICHESS_CLOUD"] === "true",
+  },
   lichess: {
     token: process.env["LICHESS_TOKEN"],
     baseUrl: "https://lichess.org",

@@ -1,0 +1,10 @@
+{
+  "name": "stockfish-engine-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Thin HTTP wrapper around native Stockfish binary for mcp-chess",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}

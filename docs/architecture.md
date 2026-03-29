@@ -15,22 +15,61 @@ ChessContext is built on a three-layer design. The key principle: **the MCP prov
 │  Narrative Generator · Critical Moments         │
 ├─────────────────────────────────────────────────┤
 │            LAYER 1: FOUNDATION                  │
-│  Stockfish WASM · Lichess Cloud Eval            │
-│  Chess.com API · Lichess API · LRU Cache        │
+│  Engine Router · Docker Stockfish               │
+│  WASM Stockfish (fallback) · LRU Cache          │
+│  Chess.com API · Lichess API                    │
 └─────────────────────────────────────────────────┘
 ```
+
+---
 
 ### Layer 1 — Foundation (`src/engines/`, `src/data/`, `src/cache/`)
 
 Raw compute and data access. Has no opinion about what it returns — just gets the data correctly.
 
-- **`engines/stockfish.ts`** — WASM UCI wrapper. Manages engine lifecycle, queues requests (one `go` at a time), parses `info` lines, returns `UCIAnalysisLine[]`. 30-second timeout, retry on crash.
-- **`engines/lichess-eval.ts`** — Queries the Lichess cloud evaluation API (`/api/cloud-eval`). Free, instant for known positions. Returns `null` if position isn't in the cloud DB. Tools always try this before touching local Stockfish.
-- **`data/chesscom-api.ts`** — Chess.com REST client. Fetches profiles, ratings, game archives (PGN format). Handles 404 as `PlayerNotFoundError`, retries on 429.
-- **`data/lichess-api.ts`** — Lichess REST client. Parses NDJSON game streams. Uses `?opening=true` parameter for free ECO codes on every game.
-- **`cache/index.ts`** — Two in-memory caches:
-  - Position cache (LRU, 500 entries): `fen:depth:multiPv → UCIAnalysisLine[]`. No TTL — eval is deterministic.
-  - Player cache (TTL, 100 entries, 5 minutes): `platform:username → PlayerStats`. Prevents double API calls from `scout_opponent`.
+#### Engine Stack
+
+The engine stack is routed through `engine-router.ts`, which selects the best available backend automatically:
+
+```
+src/engines/
+  engine-router.ts       ← unified interface (getEval, waitUntilRouterReady)
+  stockfish-docker.ts    ← HTTP client to Docker Stockfish container
+  stockfish.ts           ← WASM UCI wrapper (single-threaded, fallback)
+  stockfish-pool.ts      ← WASM Worker Thread pool (parallel, fallback)
+  stockfish-worker.ts    ← Worker Thread entry point
+  lichess-eval.ts        ← Lichess cloud eval API (optional)
+```
+
+**Eval routing priority (fastest to slowest):**
+
+```
+1. LRU cache           → instant (in-memory, deterministic)
+2. Docker Stockfish    → 100–200ms/position (native binary, multi-threaded)
+3. WASM worker pool    → 1–5s/position (parallel, no Docker needed)
+4. WASM single-thread  → 2–10s/position (sequential fallback)
+5. Lichess cloud eval  → optional, enabled via ENABLE_LICHESS_CLOUD=true
+```
+
+**`engine-router.ts`** — Selects the best available backend on startup, re-checks Docker availability every 30 seconds, and exposes a single `getEval(fen, depth, multiPv)` function that all tool handlers call. If Docker becomes available after startup, the router switches to it automatically.
+
+**`stockfish-docker.ts`** — Thin axios HTTP client. `POST /analyze` sends FEN + depth + multiPv; `GET /health` checks container readiness. Docker Stockfish is the primary backend: it uses a native binary (not WASM), can use 4+ CPU threads, has zero startup delay, and serializes requests internally so all threads focus on one position at a time.
+
+**`stockfish.ts`** — WASM UCI wrapper. Manages engine lifecycle, queues requests (one `go` at a time), parses `info` lines, returns `UCIAnalysisLine[]`. 30-second timeout, used when Docker is unavailable.
+
+**`stockfish-pool.ts`** — Parallel WASM analysis via Node.js Worker Threads. Each worker runs an independent WASM instance. Queue-based dispatch to idle workers. Used as first WASM fallback when Docker is down.
+
+**`engines/lichess-eval.ts`** — Queries the Lichess cloud eval API (`/api/cloud-eval`). Disabled by default. Enable with `ENABLE_LICHESS_CLOUD=true` to get instant high-depth evals for well-known positions.
+
+**`data/chesscom-api.ts`** — Chess.com REST client. Fetches profiles, ratings, game archives (PGN format). Handles 404 as `PlayerNotFoundError`, retries on 429.
+
+**`data/lichess-api.ts`** — Lichess REST client. Parses NDJSON game streams. Uses `?opening=true` parameter for free ECO codes on every game.
+
+**`cache/index.ts`** — Two in-memory caches:
+- Position cache (LRU, 500 entries): `fen:depth:multiPv → UCIAnalysisLine[]`. No TTL — eval is deterministic.
+- Player cache (TTL, 100 entries, 5 minutes): `platform:username → PlayerStats`. Prevents double API calls from `scout_opponent`.
+
+---
 
 ### Layer 2 — Intelligence (`src/intelligence/`)
 
@@ -41,34 +80,74 @@ Pure functions — no I/O, no side effects. Takes chess.js board state and engin
 - **`narrative-generator.ts`** — `generateNarrative()` composes 2-4 sentences from phase + structure + top themes + eval. Template-based — deterministic and fast. Themes are ranked by phase relevance (e.g., king safety ranks higher in the middlegame, passed pawns rank higher in the endgame).
 - **`critical-moments.ts`** — `detectCriticalMoments()` classifies each move: blunder (≥200cp drop), mistake (≥100cp), inaccuracy (≥50cp), missed_win (had >300cp, dropped below 100cp). `computeAccuracy()` measures % of moves within 30cp of best.
 
+---
+
 ### Layer 3 — Tools (`src/tools/`)
 
 Orchestrates Layers 1 and 2 into MCP tool handlers. Each tool is a single file with a single exported handler function.
 
-- **`analyze-position.ts`** — Cache → cloud eval → Stockfish → classify → tag → narrative → SAN conversion.
-- **`analyze-game.ts`** — Resolve PGN (direct/Lichess URL) → replay with chess.js → analyze each position with adaptive depth → detect critical moments → compute accuracy.
+- **`analyze-position.ts`** — `getEval()` (via router) → classify → tag → narrative → SAN conversion.
+- **`analyze-game.ts`** — Resolve PGN (direct/URL/username) → replay with chess.js → `Promise.all` over `getEval()` for all positions → detect critical moments → compute accuracy.
 - **`get-player-stats.ts`** — Thin dispatch: check player cache → call correct API client → cache result.
 - **`scout-opponent.ts`** — Calls `get-player-stats` internally → analyze repertoire vs your color → rule-based strategic recommendation.
 
+---
+
+## Docker Engine Container
+
+The Stockfish Docker container runs entirely separately from the MCP server:
+
+```
+Claude Desktop (Windows/macOS)
+       │  stdio
+       ▼
+MCP Server (Node.js)
+  src/engines/engine-router.ts
+       │  HTTP POST /analyze
+       ▼
+Docker Container (local)
+  engine-server/server.js        ← Express HTTP-to-UCI bridge
+       │  stdin/stdout (UCI)
+       ▼
+  /usr/local/bin/stockfish       ← Native Stockfish binary
+  (4 threads, 256MB hash)
+```
+
+The container (`mcp-server/engine-server/server.js`) is a ~150-line Express app that:
+- Spawns Stockfish as a child process
+- Translates `POST /analyze` into UCI commands (`setoption`, `position fen`, `go depth`)
+- Parses `info` lines at the target depth and collects them into `UCIAnalysisLine[]`
+- Serializes requests internally — one position at a time with all threads focused on each
+- Auto-restarts Stockfish if it crashes
+
+**Why serialized requests?** A single Stockfish using 4 threads is faster per position than 2 instances using 2 threads each. The MCP server fires all `Promise.all` requests concurrently; the container queues them and processes each with full thread power (~100–200ms at depth 12).
+
+---
+
 ## Performance Design
 
-### Eval Routing (fastest to slowest)
-```
-1. Position cache  → instant (in-memory LRU)
-2. Lichess cloud   → ~200ms (covers most opening/known positions)
-3. Local Stockfish → 2-10s per position (WASM, depth 12-18)
-```
+### Game Analysis (`analyze_game`)
+
+A 40-move game produces ~81 positions. With Docker:
+
+| Stage | Time |
+|-------|------|
+| PGN fetch + parse | < 1s |
+| 81× `getEval` (concurrent HTTP, depth 12) | 8–16s |
+| Critical moment detection | < 100ms |
+| **Total** | **~10–17s** |
+
+Without Docker (WASM fallback), the same analysis takes 30–60s+ and may hit the 50s timeout.
 
 ### Adaptive Depth in `analyze_game`
-Full games would be slow if every position were analyzed at depth 18. Instead:
-- Positions where eval barely changed from the previous move → depth 12
-- Positions with significant eval change → depth 18
-- First and last positions → depth 20
 
-This cuts analysis time by ~60% while keeping quality on critical positions.
+All positions in `analyze_game` are evaluated at `quietDepth` (default 12). The `analyze_position` tool uses `defaultDepth` (default 18) for deep single-position analysis.
 
-### Caching in Game Analysis
-After the first analysis, the same game can be re-analyzed near-instantly. Every position's eval is cached by FEN, so re-runs or analyses of positions shared between games hit the cache.
+### Caching
+
+After the first analysis, the same game can be re-analyzed near-instantly. Every position's eval is cached by `fen:depth:multiPv`, so re-runs or analyses of positions shared between games hit the LRU cache.
+
+---
 
 ## Adding a New Tool
 
@@ -82,6 +161,15 @@ After the first analysis, the same game can be re-analyzed near-instantly. Every
    });
    ```
 4. Document in `docs/tools.md`
+
+To use the engine in your new tool:
+```typescript
+import { getEval, waitUntilRouterReady } from "../engines/engine-router.js";
+
+const lines = await getEval(fen, depth, multiPv);
+```
+
+---
 
 ## Testing Intelligence Layer
 
