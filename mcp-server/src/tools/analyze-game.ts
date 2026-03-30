@@ -18,6 +18,8 @@ import type {
   UCIAnalysisLine,
 } from "../types/index.js";
 
+type ProgressCallback = (completed: number, total: number) => void;
+
 // ---------------------------------------------------------------------------
 // PGN / URL resolution
 // ---------------------------------------------------------------------------
@@ -155,10 +157,11 @@ function buildPhaseBreakdown(
 const ANALYSIS_TIMEOUT_MS = 50_000;
 
 export async function handleAnalyzeGame(
-  input: AnalyzeGameInput
+  input: AnalyzeGameInput,
+  onProgress?: ProgressCallback,
 ): Promise<GameAnalysis> {
   return Promise.race([
-    runAnalysis(input),
+    runAnalysis(input, onProgress),
     new Promise<never>((_, reject) =>
       setTimeout(
         () => reject(new Error("Game analysis timed out after 50s. Try a shorter game or paste the PGN directly.")),
@@ -168,7 +171,7 @@ export async function handleAnalyzeGame(
   ]);
 }
 
-async function runAnalysis(input: AnalyzeGameInput): Promise<GameAnalysis> {
+async function runAnalysis(input: AnalyzeGameInput, onProgress?: ProgressCallback): Promise<GameAnalysis> {
   try {
     await waitUntilRouterReady(config.stockfish.readinessTimeout);
   } catch (err: unknown) {
@@ -226,11 +229,24 @@ async function runAnalysis(input: AnalyzeGameInput): Promise<GameAnalysis> {
   // Docker Stockfish handles many positions in parallel (HTTP queue); WASM pool
   // is used as fallback. Cache hits are served instantly.
   const quietDepth = config.stockfish.quietDepth;
+  const total = positions.length;
 
+  // Emit 0/N before the loop so the client knows the total upfront.
+  onProgress?.(0, total);
+
+  let completed = 0;
   const allLines = await Promise.all(
     positions.map((pos) =>
-      getEval(pos.fen, quietDepth, 1).catch((): UCIAnalysisLine[] => [])
-    )
+      getEval(pos.fen, quietDepth, 1)
+        .catch((): UCIAnalysisLine[] => [])
+        .then((lines) => {
+          completed += 1;
+          if (completed % 10 === 0 || completed === total) {
+            onProgress?.(completed, total);
+          }
+          return lines;
+        }),
+    ),
   );
 
   const evals: number[] = allLines.map((lines) => {
