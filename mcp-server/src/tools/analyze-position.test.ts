@@ -2,33 +2,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { UCIAnalysisLine } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
-// Mock all I/O dependencies — engine and cache
+// Mock the engine router — eval routing logic lives there now
 // ---------------------------------------------------------------------------
 
-vi.mock("../engines/stockfish.js", () => ({
-  analyzePosition: vi.fn(),
-}));
-
-vi.mock("../engines/lichess-eval.js", () => ({
-  getCloudEval: vi.fn(),
-}));
-
-// Mock the cache so tests never interfere with each other via LRU state
-vi.mock("../cache/index.js", () => ({
-  getPositionEval: vi.fn().mockReturnValue(undefined), // always miss
-  setPositionEval: vi.fn(),
-  positionCacheKey: vi.fn((fen: string, depth: number, multiPv: number) => `${fen}:${depth}:${multiPv}`),
-  getPlayerStats: vi.fn(),
-  setPlayerStats: vi.fn(),
-  playerCacheKey: vi.fn(),
+vi.mock("../engines/engine-router.js", () => ({
+  getEval: vi.fn(),
+  waitUntilRouterReady: vi.fn().mockResolvedValue(undefined),
+  initRouter: vi.fn(),
+  shutdownRouter: vi.fn(),
 }));
 
 import { handleAnalyzePosition } from "./analyze-position.js";
-import { analyzePosition as stockfishAnalyze } from "../engines/stockfish.js";
-import { getCloudEval } from "../engines/lichess-eval.js";
+import { getEval } from "../engines/engine-router.js";
 
-const stockfishMock = vi.mocked(stockfishAnalyze);
-const cloudMock = vi.mocked(getCloudEval);
+const getEvalMock = vi.mocked(getEval);
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,11 +30,8 @@ function makeLines(pv = "e2e4", cp = 30, depth = 18): UCIAnalysisLine[] {
 }
 
 beforeEach(() => {
-  stockfishMock.mockReset();
-  cloudMock.mockReset();
-  // Default: cloud miss, Stockfish returns equal eval
-  cloudMock.mockResolvedValue(null);
-  stockfishMock.mockResolvedValue(makeLines());
+  getEvalMock.mockReset();
+  getEvalMock.mockResolvedValue(makeLines());
 });
 
 // ---------------------------------------------------------------------------
@@ -123,34 +107,26 @@ describe("handleAnalyzePosition — output shape", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Eval routing: cloud eval → Stockfish fallback
+// Eval routing (via engine-router)
 // ---------------------------------------------------------------------------
 
 describe("handleAnalyzePosition — eval routing", () => {
-  it("uses Stockfish when cloud eval returns null", async () => {
-    cloudMock.mockResolvedValueOnce(null);
-    stockfishMock.mockResolvedValueOnce(makeLines("e7e5", 0, 18));
-
-    const result = await handleAnalyzePosition({ fen: STARTING_FEN });
-    expect(stockfishMock).toHaveBeenCalled();
-    expect(result.evaluation.depth).toBe(18);
+  it("calls getEval with the provided FEN", async () => {
+    await handleAnalyzePosition({ fen: STARTING_FEN });
+    expect(getEvalMock).toHaveBeenCalledWith(
+      STARTING_FEN,
+      expect.any(Number),
+      expect.any(Number)
+    );
   });
 
-  it("uses cloud eval when available (does not call Stockfish)", async () => {
-    const fen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2";
-    const cloudLines: UCIAnalysisLine[] = [
-      { depth: 30, score_cp: 15, score_mate: null, pv: ["g1f3"], multipv_rank: 1 },
-    ];
-    cloudMock.mockResolvedValueOnce(cloudLines);
-
-    await handleAnalyzePosition({ fen });
-    expect(stockfishMock).not.toHaveBeenCalled();
+  it("calls getEval with custom depth when provided", async () => {
+    await handleAnalyzePosition({ fen: STARTING_FEN, depth: 12 });
+    expect(getEvalMock).toHaveBeenCalledWith(STARTING_FEN, 12, expect.any(Number));
   });
 
   it("throws when engine returns no lines", async () => {
-    cloudMock.mockResolvedValueOnce(null);
-    stockfishMock.mockResolvedValueOnce([]);
-
+    getEvalMock.mockResolvedValueOnce([]);
     await expect(handleAnalyzePosition({ fen: STARTING_FEN })).rejects.toThrow(/no analysis lines/i);
   });
 });
@@ -161,15 +137,14 @@ describe("handleAnalyzePosition — eval routing", () => {
 
 describe("handleAnalyzePosition — score text", () => {
   it("returns 'White is winning' for score ≥300", async () => {
-    stockfishMock.mockResolvedValueOnce(makeLines("e2e4", 350));
+    getEvalMock.mockResolvedValueOnce(makeLines("e2e4", 350));
     const result = await handleAnalyzePosition({ fen: STARTING_FEN });
     expect(result.evaluation.score_text).toBe("White is winning");
   });
 
   it("returns 'Mate in N' when score_mate is positive", async () => {
     const fen = "7k/5P2/5K2/8/8/8/8/8 w - - 0 1";
-    cloudMock.mockResolvedValueOnce(null);
-    stockfishMock.mockResolvedValueOnce([
+    getEvalMock.mockResolvedValueOnce([
       { depth: 20, score_cp: null, score_mate: 2, pv: ["f7f8"], multipv_rank: 1 },
     ]);
     const result = await handleAnalyzePosition({ fen });
@@ -177,7 +152,7 @@ describe("handleAnalyzePosition — score text", () => {
   });
 
   it("returns 'Equal position' for score between -24 and +24", async () => {
-    stockfishMock.mockResolvedValueOnce(makeLines("e2e4", 10));
+    getEvalMock.mockResolvedValueOnce(makeLines("e2e4", 10));
     const result = await handleAnalyzePosition({ fen: STARTING_FEN });
     expect(result.evaluation.score_text).toBe("Equal position");
   });
@@ -195,7 +170,7 @@ describe("handleAnalyzePosition — position classification", () => {
 
   it("classifies a king+rook vs king position as endgame", async () => {
     const fen = "8/8/4k3/8/8/4K3/8/4R3 w - - 0 1";
-    stockfishMock.mockResolvedValueOnce(makeLines("e1e7", 500));
+    getEvalMock.mockResolvedValueOnce(makeLines("e1e7", 500));
     const result = await handleAnalyzePosition({ fen });
     expect(result.position_context.phase).toBe("endgame");
   });
