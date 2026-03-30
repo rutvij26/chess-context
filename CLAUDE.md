@@ -19,7 +19,8 @@ mcp-server/src/
   index.ts              # entry, tool registration
   config.ts             # env vars
   types/index.ts        # interfaces + Zod schemas
-  cache/index.ts        # LRU + TTL caches
+  cache/index.ts        # SQLite position cache + LRU player stats cache
+  cache/sqlite-cache.ts # SQLite-backed eval persistence (survives restarts)
   engines/stockfish.ts  # WASM UCI wrapper
   engines/lichess-eval.ts # cloud eval (tried first)
   intelligence/         # pure fns, no I/O
@@ -45,6 +46,7 @@ mcp-server/src/
 | `STOCKFISH_QUIET_DEPTH` | `12` | quiet positions |
 | `STOCKFISH_TIMEOUT` | `30000` | ms |
 | `LICHESS_TOKEN` | — | optional, higher rate limits |
+| `EVAL_CACHE_DB` | `~/.chess-context/eval-cache.db` | SQLite eval cache path |
 
 ## Claude Desktop Config (Windows)
 ```json

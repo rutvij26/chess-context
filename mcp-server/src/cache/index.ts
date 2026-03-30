@@ -1,17 +1,18 @@
 import { LRUCache } from "lru-cache";
 import { config } from "../config.js";
 import type { UCIAnalysisLine, PlayerStats } from "../types/index.js";
+import {
+  getSqlitePositionEval,
+  setSqlitePositionEval,
+} from "./sqlite-cache.js";
 
 // ---------------------------------------------------------------------------
 // Position eval cache
 // Key: `${fen}:${depth}:${multiPv}`
 // Value: UCIAnalysisLine[]
 // No TTL — evaluation of a position at a given depth is deterministic.
+// Backed by SQLite so evaluations persist across server restarts.
 // ---------------------------------------------------------------------------
-
-const positionCache = new LRUCache<string, UCIAnalysisLine[]>({
-  max: config.cache.positionMaxSize,
-});
 
 export function positionCacheKey(
   fen: string,
@@ -22,11 +23,11 @@ export function positionCacheKey(
 }
 
 export function getPositionEval(key: string): UCIAnalysisLine[] | undefined {
-  return positionCache.get(key);
+  return getSqlitePositionEval(key);
 }
 
 export function setPositionEval(key: string, lines: UCIAnalysisLine[]): void {
-  positionCache.set(key, lines);
+  setSqlitePositionEval(key, lines);
 }
 
 // ---------------------------------------------------------------------------

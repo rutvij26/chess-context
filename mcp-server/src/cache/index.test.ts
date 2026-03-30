@@ -1,11 +1,16 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi, afterEach } from "vitest";
+import { tmpdir } from "os";
+import { join } from "path";
+import { rmSync, existsSync } from "fs";
 import type { UCIAnalysisLine, PlayerStats } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
-// We re-import the module functions each time to test a clean state.
-// Vitest module isolation re-runs the module per test file so the LRU caches
-// start empty for this file's test suite.
+// SQLite position cache uses EVAL_CACHE_DB env var (read lazily on first
+// access). Set it to a temp path before importing so tests don't touch the
+// real ~/.chess-context/eval-cache.db.
 // ---------------------------------------------------------------------------
+const TEST_DB_PATH = join(tmpdir(), `chess-context-test-${process.pid}.db`);
+process.env["EVAL_CACHE_DB"] = TEST_DB_PATH;
 
 import {
   positionCacheKey,
@@ -15,6 +20,12 @@ import {
   getPlayerStats,
   setPlayerStats,
 } from "./index.js";
+import { _closeDbForTest } from "./sqlite-cache.js";
+
+afterAll(() => {
+  _closeDbForTest();
+  if (existsSync(TEST_DB_PATH)) rmSync(TEST_DB_PATH);
+});
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -83,7 +94,7 @@ describe("positionCacheKey", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Position cache (LRU, no TTL)
+// Position eval cache (SQLite-backed, survives restarts, LRU eviction)
 // ---------------------------------------------------------------------------
 
 describe("position eval cache", () => {
@@ -99,11 +110,11 @@ describe("position eval cache", () => {
     expect(getPositionEval(key)).toEqual(lines);
   });
 
-  it("returns the exact same array reference", () => {
+  it("returns structurally equal lines (deserialized from SQLite)", () => {
     const key = positionCacheKey(FEN, 20, 1);
     const lines = makeLines(20);
     setPositionEval(key, lines);
-    expect(getPositionEval(key)).toBe(lines);
+    expect(getPositionEval(key)).toEqual(lines);
   });
 
   it("stores multiple different keys independently", () => {
@@ -124,6 +135,42 @@ describe("position eval cache", () => {
     setPositionEval(key, original);
     setPositionEval(key, updated);
     expect(getPositionEval(key)).toEqual(updated);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SQLite-specific: LRU eviction at 10,000 entries
+// ---------------------------------------------------------------------------
+
+describe("SQLite position eval cache — LRU eviction", () => {
+  const EVICTION_DB = join(tmpdir(), `chess-context-eviction-${process.pid}.db`);
+
+  beforeAll(() => {
+    // Switch to an isolated DB so we start from 0 rows
+    _closeDbForTest();
+    process.env["EVAL_CACHE_DB"] = EVICTION_DB;
+  });
+
+  afterAll(() => {
+    _closeDbForTest();
+    rmSync(EVICTION_DB, { force: true });
+    // Restore the shared test DB for any later test suites
+    process.env["EVAL_CACHE_DB"] = TEST_DB_PATH;
+  });
+
+  it("evicts the oldest entry when the 10,000-row cap is exceeded", () => {
+    const lines = makeLines();
+
+    // Insert exactly 10,000 entries — entry 0 is inserted first (oldest accessed_at)
+    for (let i = 0; i < 10_000; i++) {
+      setPositionEval(`eviction-fen-${i}:18:1`, lines);
+    }
+
+    // One more entry crosses the cap → entry 0 (oldest, never read) is evicted
+    setPositionEval("eviction-fen-overflow:18:1", lines);
+
+    expect(getPositionEval("eviction-fen-0:18:1")).toBeUndefined();
+    expect(getPositionEval("eviction-fen-overflow:18:1")).toEqual(lines);
   });
 });
 

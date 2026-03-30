@@ -1,3 +1,6 @@
+import { homedir } from "os";
+import { join } from "path";
+
 export const config = {
   stockfish: {
     defaultDepth: parseInt(process.env["STOCKFISH_DEPTH"] ?? "18"),
@@ -27,6 +30,9 @@ export const config = {
     positionMaxSize: 500,
     playerMaxSize: 100,
     playerTtlMs: 5 * 60 * 1000, // 5 minutes
+    dbPath:
+      process.env["EVAL_CACHE_DB"] ??
+      join(homedir(), ".chess-context", "eval-cache.db"),
   },
   analysis: {
     // Eval delta threshold (cp) to use full depth vs quiet depth
