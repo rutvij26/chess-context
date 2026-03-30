@@ -282,3 +282,42 @@ describe("handleAnalyzeGame — accuracy", () => {
     expect(result.summary.black_accuracy).toBe(100);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Progress callback
+// ---------------------------------------------------------------------------
+
+describe("handleAnalyzeGame — progress callback", () => {
+  it("resolves normally when onProgress is not provided", async () => {
+    await expect(handleAnalyzeGame({ pgn: SHORT_PGN })).resolves.toBeTruthy();
+  });
+
+  it("first call is 0/N (initial notification before any evals)", async () => {
+    const calls: Array<[number, number]> = [];
+    await handleAnalyzeGame({ pgn: SHORT_PGN }, (c, t) => calls.push([c, t]));
+    expect(calls[0]).toEqual([0, expect.any(Number)]);
+  });
+
+  it("last call has completed === total", async () => {
+    const calls: Array<[number, number]> = [];
+    await handleAnalyzeGame({ pgn: SHORT_PGN }, (c, t) => calls.push([c, t]));
+    const last = calls.at(-1)!;
+    expect(last[0]).toBe(last[1]);
+  });
+
+  it("total reported is consistent across all calls", async () => {
+    const calls: Array<[number, number]> = [];
+    await handleAnalyzeGame({ pgn: SHORT_PGN }, (c, t) => calls.push([c, t]));
+    const totals = calls.map(([, t]) => t);
+    expect(new Set(totals).size).toBe(1);
+  });
+
+  it("does not exceed ceil(N/10) + 2 progress events for a short game", async () => {
+    // SHORT_PGN has 9 positions (initial + 8 half-moves).
+    // Expected: 1 initial (0/9) + 1 at completion (9/9) = 2 events.
+    const calls: Array<[number, number]> = [];
+    await handleAnalyzeGame({ pgn: SHORT_PGN }, (c, t) => calls.push([c, t]));
+    const total = calls[0]![1];
+    expect(calls.length).toBeLessThanOrEqual(Math.ceil(total / 10) + 2);
+  });
+});

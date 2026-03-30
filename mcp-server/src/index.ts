@@ -51,8 +51,19 @@ server.registerTool(
       "Analyze an entire chess game. Accepts: a raw PGN string, a Chess.com game URL (https://www.chess.com/game/live/...), a Lichess game URL or game ID, or a Chess.com username to automatically fetch and analyze that player's most recent game. Returns a full review including accuracy for each player, critical moments (blunders, mistakes, missed wins), phase breakdown, and detected patterns.",
     inputSchema: AnalyzeGameInputSchema,
   },
-  async (input) => {
-    const result = await handleAnalyzeGame(input);
+  async (input, extra) => {
+    const progressToken = extra._meta?.progressToken;
+
+    const onProgress = progressToken !== undefined
+      ? (completed: number, total: number): void => {
+          void extra.sendNotification({
+            method: "notifications/progress",
+            params: { progressToken, progress: completed, total },
+          }).catch(() => {});
+        }
+      : undefined;
+
+    const result = await handleAnalyzeGame(input, onProgress);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
