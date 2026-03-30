@@ -18,8 +18,6 @@ import {
   beforeAll,
   afterAll,
 } from "vitest";
-import type { UCIAnalysisLine } from "../types/index.js";
-
 // ---------------------------------------------------------------------------
 // Skip guard + env config
 // ---------------------------------------------------------------------------
@@ -33,30 +31,11 @@ const it = RUN ? baseIt : baseIt.skip;
 // Mock engine dependencies — real HTTP, no real Stockfish
 // ---------------------------------------------------------------------------
 
-vi.mock("../engines/stockfish.js", () => ({
-  analyzePosition: vi.fn().mockResolvedValue([]),
-  isReady: vi.fn().mockReturnValue(false),
-  waitUntilReady: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../engines/stockfish-pool.js", () => ({
-  analyzePositionParallel: vi.fn().mockResolvedValue([]),
-  isPoolReady: vi.fn().mockReturnValue(false),
-  initPool: vi.fn().mockResolvedValue(undefined),
-  shutdownPool: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../engines/lichess-eval.js", () => ({
-  getCloudEval: vi.fn().mockImplementation(async (): Promise<UCIAnalysisLine[]> => []),
-}));
-
-vi.mock("../cache/index.js", () => ({
-  getPositionEval: vi.fn().mockReturnValue(undefined),
-  setPositionEval: vi.fn(),
-  positionCacheKey: vi.fn((fen: string, depth: number, multiPv: number) => `${fen}:${depth}:${multiPv}`),
-  getPlayerStats: vi.fn(),
-  setPlayerStats: vi.fn(),
-  playerCacheKey: vi.fn(),
+vi.mock("../engines/engine-router.js", () => ({
+  getEval: vi.fn().mockResolvedValue([]),
+  waitUntilRouterReady: vi.fn().mockResolvedValue(undefined),
+  initRouter: vi.fn(),
+  shutdownRouter: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------

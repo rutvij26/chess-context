@@ -17,36 +17,21 @@ vi.mock("../data/chesscom-api.js", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock all I/O dependencies
+// Mock engine router — eval routing logic lives there now
 // ---------------------------------------------------------------------------
 
-vi.mock("../engines/stockfish.js", () => ({
-  analyzePosition: vi.fn(),
-  isReady: vi.fn().mockReturnValue(true),
-  waitUntilReady: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../engines/lichess-eval.js", () => ({
-  getCloudEval: vi.fn(),
-}));
-
-// Mock cache to prevent cross-test contamination
-vi.mock("../cache/index.js", () => ({
-  getPositionEval: vi.fn().mockReturnValue(undefined),
-  setPositionEval: vi.fn(),
-  positionCacheKey: vi.fn((fen: string, depth: number, multiPv: number) => `${fen}:${depth}:${multiPv}`),
-  getPlayerStats: vi.fn(),
-  setPlayerStats: vi.fn(),
-  playerCacheKey: vi.fn(),
+vi.mock("../engines/engine-router.js", () => ({
+  getEval: vi.fn(),
+  waitUntilRouterReady: vi.fn().mockResolvedValue(undefined),
+  initRouter: vi.fn(),
+  shutdownRouter: vi.fn(),
 }));
 
 import { handleAnalyzeGame } from "./analyze-game.js";
-import { analyzePosition as stockfishAnalyze } from "../engines/stockfish.js";
-import { getCloudEval } from "../engines/lichess-eval.js";
+import { getEval } from "../engines/engine-router.js";
 import { fetchGameByUrl, fetchLastGame } from "../data/chesscom-api.js";
 
-const stockfishMock = vi.mocked(stockfishAnalyze);
-const cloudMock = vi.mocked(getCloudEval);
+const getEvalMock = vi.mocked(getEval);
 const fetchGameByUrlMock = vi.mocked(fetchGameByUrl);
 const fetchLastGameMock = vi.mocked(fetchLastGame);
 
@@ -77,13 +62,11 @@ function makeEvalLine(cp: number): UCIAnalysisLine {
 }
 
 beforeEach(() => {
-  stockfishMock.mockReset();
-  cloudMock.mockReset();
+  getEvalMock.mockReset();
   fetchGameByUrlMock.mockReset();
   fetchLastGameMock.mockReset();
-  // Default: cloud miss, Stockfish returns equal eval
-  cloudMock.mockResolvedValue(null);
-  stockfishMock.mockResolvedValue([makeEvalLine(20)]);
+  // Default: engine returns equal eval for all positions
+  getEvalMock.mockResolvedValue([makeEvalLine(20)]);
 });
 
 // ---------------------------------------------------------------------------
@@ -169,7 +152,7 @@ describe("handleAnalyzeGame — critical moments", () => {
     // This means white's 2nd move (move 3 in 0-indexed half-moves, move 2 full-moves)
     // caused a 270cp drop (20 → -250 from white's perspective).
     let callCount = 0;
-    cloudMock.mockImplementation(async () => {
+    getEvalMock.mockImplementation(async () => {
       callCount++;
       // Position 4 (0-indexed): eval swings to -250cp for white
       if (callCount === 4) {
@@ -185,7 +168,7 @@ describe("handleAnalyzeGame — critical moments", () => {
 
   it("returns no critical moments when all moves are accurate", async () => {
     // Constant eval = no drops → no critical moments
-    cloudMock.mockResolvedValue([makeEvalLine(20)]);
+    getEvalMock.mockResolvedValue([makeEvalLine(20)]);
 
     const result = await handleAnalyzeGame({ pgn: SHORT_PGN });
     expect(result.critical_moments).toHaveLength(0);
@@ -292,7 +275,7 @@ describe("handleAnalyzeGame — URL resolution", () => {
 describe("handleAnalyzeGame — accuracy", () => {
   it("reports 100% accuracy when all moves are within 30cp of best", async () => {
     // Constant eval of +20 → all moves are "accurate" (drop=0 < 30)
-    cloudMock.mockResolvedValue([makeEvalLine(20)]);
+    getEvalMock.mockResolvedValue([makeEvalLine(20)]);
 
     const result = await handleAnalyzeGame({ pgn: SHORT_PGN });
     expect(result.summary.white_accuracy).toBe(100);
