@@ -44,7 +44,8 @@ mcp-server/src/
 |-----|---------|------|
 | `STOCKFISH_DEPTH` | `18` | default depth |
 | `STOCKFISH_QUIET_DEPTH` | `12` | quiet positions |
-| `STOCKFISH_TIMEOUT` | `30000` | ms |
+| `STOCKFISH_TIMEOUT` | `30000` | ms per position |
+| `STOCKFISH_READINESS_TIMEOUT` | `90000` | ms to wait for engine init before rejecting tool calls |
 | `LICHESS_TOKEN` | — | optional, higher rate limits |
 | `EVAL_CACHE_DB` | `~/.chess-context/eval-cache.db` | SQLite eval cache path |
 

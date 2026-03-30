@@ -13,9 +13,10 @@ vi.mock("../engines/engine-router.js", () => ({
 }));
 
 import { handleAnalyzePosition } from "./analyze-position.js";
-import { getEval } from "../engines/engine-router.js";
+import { getEval, waitUntilRouterReady } from "../engines/engine-router.js";
 
 const getEvalMock = vi.mocked(getEval);
+const waitUntilRouterReadyMock = vi.mocked(waitUntilRouterReady);
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -32,6 +33,8 @@ function makeLines(pv = "e2e4", cp = 30, depth = 18): UCIAnalysisLine[] {
 beforeEach(() => {
   getEvalMock.mockReset();
   getEvalMock.mockResolvedValue(makeLines());
+  waitUntilRouterReadyMock.mockReset();
+  waitUntilRouterReadyMock.mockResolvedValue(undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -128,6 +131,27 @@ describe("handleAnalyzePosition — eval routing", () => {
   it("throws when engine returns no lines", async () => {
     getEvalMock.mockResolvedValueOnce([]);
     await expect(handleAnalyzePosition({ fen: STARTING_FEN })).rejects.toThrow(/no analysis lines/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Engine readiness gate
+// ---------------------------------------------------------------------------
+
+describe("handleAnalyzePosition — engine readiness gate", () => {
+  it("awaits waitUntilRouterReady before calling getEval", async () => {
+    await handleAnalyzePosition({ fen: STARTING_FEN });
+    expect(waitUntilRouterReadyMock).toHaveBeenCalledOnce();
+  });
+
+  it("propagates engine timeout errors before analysis begins", async () => {
+    waitUntilRouterReadyMock.mockRejectedValueOnce(
+      new Error("Stockfish engine is still loading (~60s). Please retry in a moment.")
+    );
+    await expect(handleAnalyzePosition({ fen: STARTING_FEN })).rejects.toThrow(
+      /still loading/i
+    );
+    expect(getEvalMock).not.toHaveBeenCalled();
   });
 });
 

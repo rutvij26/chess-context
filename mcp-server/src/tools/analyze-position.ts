@@ -1,5 +1,5 @@
 import { Chess } from "chess.js";
-import { getEval } from "../engines/engine-router.js";
+import { waitUntilRouterReady, getEval } from "../engines/engine-router.js";
 import {
   classifyPhase,
   classifyPawnStructure,
@@ -99,6 +99,8 @@ function buildMoveExplanation(board: Chess, san: string, pvSan: string[]): strin
 export async function handleAnalyzePosition(
   input: AnalyzePositionInput
 ): Promise<PositionAnalysis> {
+  await waitUntilRouterReady(config.stockfish.readinessTimeout);
+
   const depth = input.depth ?? config.stockfish.defaultDepth;
   const numLines = input.num_lines ?? config.stockfish.defaultMultiPv;
 
