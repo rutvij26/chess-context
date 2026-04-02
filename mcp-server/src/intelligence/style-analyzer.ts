@@ -228,8 +228,9 @@ export function scoreTimeManagement(
     const initialSecs = parseInitialTime(tc);
     if (!initialSecs || initialSecs <= 0) continue;
 
-    // Extract clock annotations from PGN moves
-    const clockAnnotations = pgn.match(/\{\[%clk[^\}]+\}\}/g) ?? [];
+    // Extract clock annotations from PGN moves.
+    // Lichess PGN format: { [%clk H:MM:SS] } (comment block containing clk tag)
+    const clockAnnotations = pgn.match(/\{[^}]*\[%clk[^}]+\}/g) ?? [];
 
     // Find clock annotation around move 30 (60th half-move)
     if (clockAnnotations.length < 30) continue;
