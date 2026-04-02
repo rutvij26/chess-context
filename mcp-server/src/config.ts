@@ -23,6 +23,9 @@ export const config = {
     token: process.env["LICHESS_TOKEN"],
     baseUrl: "https://lichess.org",
     cloudEvalUrl: "https://lichess.org/api/cloud-eval",
+    // Lichess allows 15 req/s unauthenticated, 30 req/s with a token.
+    // Default 10 is safe for both; set LICHESS_CLOUD_CONCURRENCY=25 with a token.
+    cloudConcurrency: parseInt(process.env["LICHESS_CLOUD_CONCURRENCY"] ?? "10"),
   },
   chesscom: {
     baseUrl: "https://api.chess.com/pub",

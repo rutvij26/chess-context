@@ -47,7 +47,8 @@ mcp-server/src/
 | `STOCKFISH_CRITICAL_DEPTH` | `16` | critical positions (pass 2) |
 | `STOCKFISH_TIMEOUT` | `30000` | ms per position |
 | `STOCKFISH_READINESS_TIMEOUT` | `90000` | ms to wait for engine init before rejecting tool calls |
-| `LICHESS_TOKEN` | — | optional, higher rate limits |
+| `LICHESS_TOKEN` | — | optional, higher rate limits (allows LICHESS_CLOUD_CONCURRENCY=25) |
+| `LICHESS_CLOUD_CONCURRENCY` | `10` | max concurrent cloud eval requests (safe default; raise to 25 with a token) |
 | `EVAL_CACHE_DB` | `~/.chess-context/eval-cache.db` | SQLite eval cache path |
 
 ## Claude Desktop Config (Windows)
@@ -65,8 +66,19 @@ mcp-server/src/
 For every GitHub issue:
 1. `git checkout -b issue-<N>-short-description`
 2. Implement + tests
-3. PR: link issue (`Closes #N`), assign @rutvij26 as reviewer
-4. Merge only after review approval
+3. Update affected docs in the **same PR** — see table below
+4. PR: link issue (`Closes #N`), assign @rutvij26 as reviewer
+5. Merge only after review approval
+
+### Which docs to update
+| Change type | Update these files |
+|-------------|-------------------|
+| New tool | `docs/tools.md` + `docs/architecture.md` (layer map) |
+| New intelligence theme or pawn structure | `docs/intelligence.md` |
+| New env var | `CLAUDE.md` env vars table + `docs/installation.md` |
+| Config/depth defaults changed | `docs/architecture.md` (design decisions) + `docs/reliability.md` |
+| New API or data source | `docs/architecture.md` (foundation layer) + `docs/reliability.md` |
+| Cache behavior changed | `docs/reliability.md` |
 
 ## Milestones
 See `ROADMAP.md`. All tasks tracked as GitHub issues (#1–#30).

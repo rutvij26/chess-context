@@ -2,6 +2,47 @@
 
 ChessContext is built on a three-layer design. The key principle: **the MCP provides chess meaning, Claude provides the reasoning.**
 
+---
+
+## System Boundaries
+
+### What this system does
+
+chess-context is a **deterministic pre-processing layer** that transforms raw chess data (PGN, FEN, player history) into structured, semantically enriched JSON before it reaches Claude. It runs Stockfish, calls Chess.com and Lichess APIs, classifies positions, and annotates moves.
+
+### What Claude does
+
+Claude receives the enriched JSON and generates natural language responses. Claude does not run any engine or call any external API — all computation happens before Claude sees any data.
+
+### Concrete example
+
+| Step | Performed by |
+|------|-------------|
+| Fetch PGN from Chess.com | this server (data layer) |
+| Run Stockfish at depth 18 | this server (engine layer) |
+| Classify position as "knight outpost in middlegame" | this server (intelligence layer) |
+| Explain the knight outpost in plain language | Claude |
+
+### Deterministic vs heuristic pipeline
+
+Not all logic is equal:
+
+- **Deterministic (rule-based):** pawn structure detection, material balance calculation, game phase by piece count, critical moment thresholds (≥200cp = blunder regardless of position)
+- **Heuristic (threshold-based):** theme tagging (e.g. "king safety concern" fires when shield pawns < 2), complexity estimation, space advantage (fires when ≥10 moves target advanced squares)
+
+### What enriched output adds over raw Stockfish
+
+Raw Stockfish gives centipawn scores. This server additionally provides:
+
+- Human-readable move categorisation (brilliant / good / inaccuracy / mistake / blunder)
+- Position themes (pin, fork potential, back rank weakness, knight outpost, …)
+- Pawn structure labels (isolated, doubled, passed, backward, hanging, …)
+- 2–4 sentence narrative ready for Claude to use or quote directly
+- Opening name, game phase, material balance in centipawns
+- Accuracy percentage per player
+
+---
+
 ## The Three Layers
 
 ```
@@ -185,3 +226,122 @@ console.log(classifyPawnStructure(board));  // ["symmetrical"]
 ```
 
 No mocking required — just chess.js board instances and plain function calls.
+
+---
+
+## File and Function Map
+
+Every file in the project maps to exactly one layer. Use this as a navigation index.
+
+### Layer 1 — Foundation
+
+| File | Key exports |
+|------|-------------|
+| `engines/engine-router.ts` | `getEval(fen, depth, multiPv)`, `waitUntilRouterReady()` |
+| `engines/stockfish-docker.ts` | `analyzeWithDocker()`, `checkDockerHealth()` |
+| `engines/stockfish.ts` | `analyzePosition()`, engine lifecycle management |
+| `engines/stockfish-pool.ts` | WASM worker pool, `analyzeWithPool()` |
+| `engines/stockfish-worker.ts` | Worker Thread entry point |
+| `engines/lichess-eval.ts` | `getCloudEval(fen, multiPv)` |
+| `data/chesscom-api.ts` | `getPlayerProfile()`, `getRecentGames()` |
+| `data/lichess-api.ts` | `getPlayerGames()`, NDJSON stream parsing |
+| `cache/index.ts` | `getPositionCache()`, `getPlayerCache()` |
+| `cache/sqlite-cache.ts` | `SqliteEvalCache` — persistent eval storage |
+
+### Layer 2 — Intelligence
+
+| File | Key exports |
+|------|-------------|
+| `intelligence/position-classifier.ts` | `classifyPhase()`, `classifyPawnStructure()`, `getMaterialBalance()`, `estimateComplexity()` |
+| `intelligence/theme-tagger.ts` | `tagThemes(board, phase)` |
+| `intelligence/narrative-generator.ts` | `generateNarrative(phase, structures, themes, scoreCp, scoreMate)` |
+| `intelligence/critical-moments.ts` | `detectCriticalMoments()`, `computeAccuracy()`, `categoriseMistakesByPhase()` |
+
+### Layer 3 — Tools
+
+| File | Key exports |
+|------|-------------|
+| `tools/analyze-position.ts` | `handleAnalyzePosition(input)` |
+| `tools/analyze-game.ts` | `handleAnalyzeGame(input)` |
+| `tools/get-player-stats.ts` | `handleGetPlayerStats(input)` |
+| `tools/scout-opponent.ts` | `handleScoutOpponent(input)` |
+
+### Entry Point
+
+| File | Purpose |
+|------|---------|
+| `index.ts` | MCP server setup, tool registration |
+| `config.ts` | All env var defaults in one place |
+| `types/index.ts` | All shared types, Zod input schemas |
+
+---
+
+## Layer Boundary Rules
+
+These rules enforce the three-layer separation and keep the codebase maintainable:
+
+| Layer | May import from | Must NOT import from |
+|-------|----------------|---------------------|
+| Intelligence (`src/intelligence/`) | `chess.js`, `src/types/` | engines, data APIs, cache, tools |
+| Foundation (`src/engines/`, `src/data/`, `src/cache/`) | npm packages, `src/types/`, `src/config.ts` | intelligence layer, tools |
+| Tools (`src/tools/`) | foundation layer, intelligence layer, `src/types/` | each other (no cross-tool imports) |
+
+**Why these boundaries matter:**
+- The intelligence layer stays pure — easily testable without mocks, reusable across tools
+- The foundation layer stays ignorant of chess semantics — easy to swap backends
+- Tools orchestrate both layers but don't leak logic between them
+
+---
+
+## Extending the System
+
+### Adding a new tactical or strategic theme
+
+1. **Add the constant** to `CHESS_THEMES` in `src/types/index.ts`:
+   ```typescript
+   export const CHESS_THEMES = [
+     // existing themes...
+     "your_new_theme",
+   ] as const;
+   ```
+
+2. **Write the detector** in `src/intelligence/theme-tagger.ts`:
+   ```typescript
+   function hasYourNewTheme(board: Chess): boolean {
+     // Use board.board(), board.moves(), etc.
+     // Return true if the condition is present
+     return false;
+   }
+   ```
+
+3. **Register it** in the `tagThemes()` function — add a call to your detector in the results array.
+
+4. **Add phase relevance** — add your theme to the appropriate phase priority list in `tagThemes()` so the narrative generator ranks it correctly.
+
+5. **Add a narrative sentence** in `src/intelligence/narrative-generator.ts` — add a case for your theme key in the theme sentences map.
+
+6. **Write tests** in `src/intelligence/theme-tagger.test.ts` — use a known FEN where your condition is present and absent.
+
+### Adding a new pawn structure type
+
+1. **Add the constant** to `PAWN_STRUCTURES` in `src/types/index.ts`:
+   ```typescript
+   export const PAWN_STRUCTURES = [
+     // existing structures...
+     "your_structure",
+   ] as const;
+   ```
+
+2. **Write the detection logic** in `classifyPawnStructure()` in `src/intelligence/position-classifier.ts`. The function iterates over the board array — follow the existing pattern.
+
+3. **Add a narrative sentence** for the new structure in `src/intelligence/narrative-generator.ts`.
+
+4. **Write tests** in `src/intelligence/position-classifier.test.ts` — use a FEN where the structure is clearly present.
+
+### Adding a new MCP tool
+
+See `CLAUDE.md`'s "Adding a Tool" section for the full workflow. The short version:
+1. Define input/output types in `src/types/index.ts`
+2. Create `src/tools/your-tool.ts` with `handleYourTool(input)`
+3. Register in `src/index.ts`
+4. Document in `docs/tools.md` and update the file map above
