@@ -275,3 +275,137 @@ export interface ScoutReport {
   strategic_recommendation: string;
   opening_suggestion: string;
 }
+
+// ---------------------------------------------------------------------------
+// v0.6 tool input/output types
+// ---------------------------------------------------------------------------
+
+// refresh_games
+export const RefreshGamesInputSchema = z.object({
+  username: z.string().describe("Player username on the platform"),
+  platform: z.enum(["chess.com", "lichess"]),
+  count: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe("Number of recent games to fetch and store (default: 20, max: 50)"),
+});
+export type RefreshGamesInput = z.infer<typeof RefreshGamesInputSchema>;
+
+export interface RefreshGamesOutput {
+  username: string;
+  platform: string;
+  fetched: number;
+  new_games: number;
+  queued_for_analysis: number;
+  already_analyzed: number;
+  status: "processing" | "up_to_date" | "error";
+  message: string;
+}
+
+// review_game
+export const ReviewGameInputSchema = z.object({
+  pgn: z.string().optional().describe("PGN string of the game to review"),
+  game_url: z
+    .string()
+    .optional()
+    .describe("Chess.com or Lichess game URL"),
+  lichess_id: z.string().optional().describe("Lichess game ID"),
+  player_username: z
+    .string()
+    .describe("Username of the player whose perspective to review from"),
+  platform: z.enum(["chess.com", "lichess"]),
+});
+export type ReviewGameInput = z.infer<typeof ReviewGameInputSchema>;
+
+export type PlayerLevel = "beginner" | "club" | "advanced";
+export type PhaseGrade = "A" | "B" | "C" | "D" | "F";
+
+export interface ReviewGameOutput {
+  player: string;
+  player_level: PlayerLevel;
+  result: "win" | "loss" | "draw";
+  accuracy: number;
+  turning_point: {
+    move_number: number;
+    description: string;
+    eval_swing_cp: number;
+  } | null;
+  phase_performance: {
+    opening: { assessment: string; grade: PhaseGrade };
+    middlegame: { assessment: string; grade: PhaseGrade };
+    endgame?: { assessment: string; grade: PhaseGrade };
+  };
+  study_recommendations: string[];
+  narrative: string;
+}
+
+// get_mistake_patterns
+export const GetMistakePatternsInputSchema = z.object({
+  username: z.string().describe("Player username on the platform"),
+  platform: z.enum(["chess.com", "lichess"]),
+  num_games: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe("Number of recent games to analyze (default: 20, max: 50)"),
+  time_control: z
+    .enum(["bullet", "blitz", "rapid"])
+    .optional()
+    .describe("Filter by time control"),
+});
+export type GetMistakePatternsInput = z.infer<typeof GetMistakePatternsInputSchema>;
+
+export interface MistakePattern {
+  pattern_type: string;
+  frequency: number;
+  phase: "opening" | "middlegame" | "endgame";
+  description: string;
+  example_game_index?: number;
+  suggested_study: string;
+}
+
+export interface GetMistakePatternsOutput {
+  username: string;
+  games_analyzed: number;
+  games_available: number;
+  patterns: MistakePattern[];
+  overall_summary: string;
+  note?: string;
+}
+
+// get_style_fingerprint
+export const GetStyleFingerprintInputSchema = z.object({
+  username: z.string().describe("Player username on the platform"),
+  platform: z.enum(["chess.com", "lichess"]),
+  num_games: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe("Number of recent games to analyze (default: 50, max: 100)"),
+});
+export type GetStyleFingerprintInput = z.infer<typeof GetStyleFingerprintInputSchema>;
+
+export interface StyleFingerprint {
+  aggression: number;
+  positional_sense: number;
+  tactical_sharpness: number;
+  endgame_skill: number;
+  time_management: number | null;
+}
+
+export interface GetStyleFingerprintOutput {
+  username: string;
+  platform: string;
+  games_analyzed: number;
+  fingerprint: StyleFingerprint;
+  style_label: string;
+  description: string;
+  note?: string;
+}

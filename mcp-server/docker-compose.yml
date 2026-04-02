@@ -1,4 +1,23 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chess-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chess_context
+      POSTGRES_USER: chess
+      POSTGRES_PASSWORD: chess
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chess -d chess_context"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   stockfish:
     build:
       context: .
@@ -20,3 +39,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+volumes:
+  pgdata:
