@@ -258,3 +258,190 @@ Generate a pre-game scouting report with strategic recommendations.
 - *"Scout my opponent 'rival456' on chess.com before our match, I'm playing white"*
 - *"What should I know about playing against [username] on Lichess? I'll be black"*
 - *"Prepare me to face [username] — what openings should I expect?"*
+
+---
+
+## Output Reference
+
+### Type Schema
+
+All types are defined in `mcp-server/src/types/index.ts`. This section documents each output type in prose.
+
+#### `PositionAnalysis` (returned by `analyze_position`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `evaluation.score_cp` | `number \| null` | Centipawn score, positive = white advantage. Null when mate is found. |
+| `evaluation.score_mate` | `number \| null` | Mate in N moves. Positive = white is mating. Null when no forced mate. |
+| `evaluation.score_text` | `string` | Human-readable summary (e.g. "Slight advantage for White") |
+| `evaluation.depth` | `number` | Depth the engine searched to |
+| `best_moves[]` | `TopMove[]` | Top N moves ranked by engine score |
+| `best_moves[].move_uci` | `string` | Move in UCI notation (e.g. "e2e4") |
+| `best_moves[].move_san` | `string` | Move in SAN notation (e.g. "e4") |
+| `best_moves[].eval_cp` | `number \| null` | Centipawn eval after this move |
+| `best_moves[].eval_mate` | `number \| null` | Mate distance after this move |
+| `best_moves[].continuation` | `string[]` | Expected reply sequence in SAN |
+| `best_moves[].explanation` | `string` | One-sentence move description |
+| `position_context.phase` | `"opening" \| "middlegame" \| "endgame"` | Current game phase |
+| `position_context.move_number` | `number` | Full move number |
+| `position_context.pawn_structures` | `string[]` | Active pawn structure labels |
+| `position_context.themes` | `string[]` | Active strategic/tactical themes |
+| `position_context.material_balance` | `number` | Centipawns. Positive = white material lead. |
+| `position_context.complexity` | `"low" \| "medium" \| "high"` | Position complexity estimate |
+| `position_context.narrative` | `string` | 2–4 sentence human-readable position summary |
+
+#### `GameAnalysis` (returned by `analyze_game`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `game_info.white` | `string` | White player username |
+| `game_info.black` | `string` | Black player username |
+| `game_info.result` | `string` | Game result: "1-0", "0-1", or "1/2-1/2" |
+| `game_info.opening` | `string` | Opening name (ECO lookup) |
+| `game_info.time_control` | `string` | Time control string |
+| `game_info.date` | `string` | Game date |
+| `game_info.platform` | `string` | Source platform |
+| `summary.total_moves` | `number` | Total half-moves in the game |
+| `summary.white_accuracy` | `number` | White's accuracy (0–100) |
+| `summary.black_accuracy` | `number` | Black's accuracy (0–100) |
+| `summary.phase_breakdown` | `object` | Move ranges and assessment per phase |
+| `summary.mistake_categories.tactical` | `number` | Count of tactical errors |
+| `summary.mistake_categories.strategic` | `number` | Count of strategic errors |
+| `critical_moments[]` | `CriticalMoment[]` | Significant mistakes and missed wins |
+| `critical_moments[].move_number` | `number` | Full move number |
+| `critical_moments[].color` | `"white" \| "black"` | Who made the error |
+| `critical_moments[].move_played` | `string` | The move played (SAN) |
+| `critical_moments[].best_move` | `string` | Engine's best alternative (SAN) |
+| `critical_moments[].eval_before_cp` | `number` | Eval before the move (cp) |
+| `critical_moments[].eval_after_cp` | `number` | Eval after the move (cp) |
+| `critical_moments[].eval_drop_cp` | `number` | How much eval dropped |
+| `critical_moments[].category` | `"inaccuracy" \| "mistake" \| "blunder" \| "missed_win"` | Error category |
+| `critical_moments[].explanation` | `string` | One-sentence explanation |
+| `patterns_detected` | `string[]` | Summary strings for recurring patterns |
+
+#### `PlayerStats` (returned by `get_player_stats`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `username` | `string` | Player username |
+| `platform` | `"chess.com" \| "lichess"` | Platform |
+| `ratings` | `object` | Per time-control: `{ current, peak, games }` |
+| `win_rate.overall` | `number` | Overall win % |
+| `win_rate.as_white` | `number` | Win % with white pieces |
+| `win_rate.as_black` | `number` | Win % with black pieces |
+| `opening_repertoire.as_white` | `OpeningEntry[]` | White opening frequencies |
+| `opening_repertoire.as_black_vs_e4` | `OpeningEntry[]` | Black responses to 1.e4 |
+| `opening_repertoire.as_black_vs_d4` | `OpeningEntry[]` | Black responses to 1.d4 |
+| `recent_form.last_n_games` | `number` | Sample size |
+| `recent_form.wins/draws/losses` | `number` | Results breakdown |
+| `recent_form.rating_trend` | `"rising" \| "falling" \| "stable"` | Rating direction |
+
+#### `ScoutReport` (returned by `scout_opponent`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `opponent_profile` | `PlayerStats` | Full stats (same shape as `get_player_stats`) |
+| `expected_openings[]` | `object[]` | Most likely openings vs your color |
+| `expected_openings[].opening` | `string` | Opening name |
+| `expected_openings[].frequency_percent` | `number` | How often played (%) |
+| `expected_openings[].win_rate` | `number` | Opponent's win rate with it |
+| `expected_openings[].trend` | `"increasing" \| "decreasing" \| "stable"` | Recent usage trend |
+| `strengths` | `string[]` | 2–3 identified strengths |
+| `weaknesses` | `string[]` | 2–3 identified weaknesses |
+| `strategic_recommendation` | `string` | Tailored pre-game advice |
+| `opening_suggestion` | `string` | Opening preparation advice |
+
+---
+
+### Before vs After: Raw Engine Output vs Enriched Context
+
+To illustrate what this server adds, here is what a raw Stockfish output looks like versus the enriched context:
+
+**Raw Stockfish output (what you'd get from the engine directly):**
+```json
+{
+  "depth": 18,
+  "score_cp": 42,
+  "pv": ["e2e4", "e7e5", "g1f3"]
+}
+```
+
+**Enriched MCP context (what `analyze_position` returns):**
+```json
+{
+  "evaluation": {
+    "score_cp": 42,
+    "score_mate": null,
+    "score_text": "Approximately equal",
+    "depth": 18
+  },
+  "best_moves": [{
+    "move_uci": "e2e4",
+    "move_san": "e4",
+    "eval_cp": 42,
+    "eval_mate": null,
+    "continuation": ["e5", "Nf3"],
+    "explanation": "Central pawn grab controlling d5 and f5"
+  }],
+  "position_context": {
+    "phase": "opening",
+    "move_number": 1,
+    "pawn_structures": ["symmetrical"],
+    "themes": ["piece_activity", "space_advantage"],
+    "material_balance": 0,
+    "complexity": "low",
+    "narrative": "The game is in the opening phase, where development and center control are key priorities. The symmetrical pawn structure means the game is balanced — the player with better piece activity will have the edge. Active, well-coordinated pieces give the better side significant attacking potential. The position is approximately equal."
+  }
+}
+```
+
+---
+
+### End-to-End Pipeline Walkthrough
+
+Here is the full data flow for an `analyze_game` call:
+
+```
+1. Input: PGN string / Lichess URL / game ID
+       │
+       ▼
+2. analyze-game.ts (Tool layer)
+   - Parse and validate input (Zod schema)
+   - Fetch PGN if URL/ID provided
+   - Replay game with chess.js, extract positions
+       │
+       ▼
+3. engine-router.ts (Foundation — for each position)
+   - Check SQLite eval cache → hit: skip engine call
+   - Try Docker Stockfish (100–200ms/position)
+   - Fallback: WASM pool → single WASM
+   - Optional: Lichess cloud eval (if ENABLE_LICHESS_CLOUD=true)
+       │
+       ▼
+4. Adaptive depth (two-pass)
+   - Pass 1: all positions at quietDepth (default 10) — fast sweep
+   - Identify critical positions: eval swing > quietThreshold (30cp)
+   - Pass 2: re-evaluate critical positions at criticalDepth (default 16)
+       │
+       ▼
+5. Intelligence layer (for each position)
+   - position-classifier.ts: classifyPhase(), classifyPawnStructure(), getMaterialBalance()
+   - theme-tagger.ts: tagThemes()
+   - narrative-generator.ts: generateNarrative()
+       │
+       ▼
+6. critical-moments.ts
+   - detectCriticalMoments(): classify blunders, mistakes, inaccuracies, missed wins
+   - computeAccuracy(): % moves within 30cp of best, per player
+       │
+       ▼
+7. MCP JSON response
+   - Structured GameAnalysis object
+   - All fields populated, no raw centipawn arrays
+       │
+       ▼
+8. Claude
+   - Receives enriched JSON
+   - Generates natural language analysis
+   - Does NOT call any engine or API
+```
