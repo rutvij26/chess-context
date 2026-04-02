@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 ## Status
-v0.5.0 — 4 tools live. Engine hardening complete (readiness gate, SQLite cache, cloud eval concurrency, adaptive depth, progress notifications).
-Next: v0.6 (7 tools) → v0.7 (10 tools).
+v0.6.0 — 8 tools live. PostgreSQL game store added; `refresh_games`, `review_game`, `get_mistake_patterns`, `get_style_fingerprint` implemented.
+Next: v0.7 (10 tools).
 
 ## Commands
 ```bash

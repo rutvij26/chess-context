@@ -133,7 +133,7 @@ export async function getRecentGames(
       `${config.lichess.baseUrl}/api/games/user/${encodeURIComponent(username)}`,
       {
         headers: buildHeaders(),
-        params: { max: count, opening: "true", moves: "true", rated: "true" },
+        params: { max: count, opening: "true", moves: "true", clocks: "true", rated: "true" },
         responseType: "text",
       }
     );

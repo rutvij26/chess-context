@@ -38,6 +38,9 @@ export const config = {
       process.env["EVAL_CACHE_DB"] ??
       join(homedir(), ".chess-context", "eval-cache.db"),
   },
+  database: {
+    url: process.env["DATABASE_URL"] ?? null,
+  },
   analysis: {
     // Eval delta threshold (cp) to use full depth vs quiet depth
     quietThreshold: 30,

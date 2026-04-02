@@ -160,7 +160,7 @@ export async function handleAnalyzeGame(
   input: AnalyzeGameInput,
   onProgress?: ProgressCallback,
 ): Promise<GameAnalysis> {
-  return Promise.race([
+  const { analysis } = await Promise.race([
     runAnalysis(input, onProgress),
     new Promise<never>((_, reject) =>
       setTimeout(
@@ -169,9 +169,13 @@ export async function handleAnalyzeGame(
       )
     ),
   ]);
+  return analysis;
 }
 
-async function runAnalysis(input: AnalyzeGameInput, onProgress?: ProgressCallback): Promise<GameAnalysis> {
+async function runAnalysis(
+  input: AnalyzeGameInput,
+  onProgress?: ProgressCallback,
+): Promise<{ analysis: GameAnalysis; moveRecords: MoveRecord[] }> {
   try {
     await waitUntilRouterReady(config.stockfish.readinessTimeout);
   } catch (err: unknown) {
@@ -375,9 +379,30 @@ async function runAnalysis(input: AnalyzeGameInput, onProgress?: ProgressCallbac
   };
 
   return {
-    game_info: gameInfo,
-    summary,
-    critical_moments: criticalMoments,
-    patterns_detected: patterns,
+    analysis: {
+      game_info: gameInfo,
+      summary,
+      critical_moments: criticalMoments,
+      patterns_detected: patterns,
+    },
+    moveRecords,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Public: full result including MoveRecord[] (used by the analysis pipeline)
+// ---------------------------------------------------------------------------
+
+export async function analyzeGameFull(
+  pgn: string
+): Promise<{ analysis: GameAnalysis; moveRecords: MoveRecord[] }> {
+  return Promise.race([
+    runAnalysis({ pgn }),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("Game analysis timed out after 50s.")),
+        ANALYSIS_TIMEOUT_MS
+      )
+    ),
+  ]);
 }
