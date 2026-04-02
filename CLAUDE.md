@@ -47,7 +47,8 @@ mcp-server/src/
 | `STOCKFISH_CRITICAL_DEPTH` | `16` | critical positions (pass 2) |
 | `STOCKFISH_TIMEOUT` | `30000` | ms per position |
 | `STOCKFISH_READINESS_TIMEOUT` | `90000` | ms to wait for engine init before rejecting tool calls |
-| `LICHESS_TOKEN` | — | optional, higher rate limits |
+| `LICHESS_TOKEN` | — | optional, higher rate limits (allows LICHESS_CLOUD_CONCURRENCY=25) |
+| `LICHESS_CLOUD_CONCURRENCY` | `10` | max concurrent cloud eval requests (safe default; raise to 25 with a token) |
 | `EVAL_CACHE_DB` | `~/.chess-context/eval-cache.db` | SQLite eval cache path |
 
 ## Claude Desktop Config (Windows)
