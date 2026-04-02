@@ -64,7 +64,7 @@ export async function handleGetStyleFingerprint(
   const timeControls: (string | null)[] = [];
 
   for (const analysis of analyses) {
-    const meta = gameMap.get(analysis.player_game_id);
+    const meta = gameMap.get(Number(analysis.player_game_id));
     if (!meta) continue;
 
     const playerColor =
@@ -73,8 +73,8 @@ export async function handleGetStyleFingerprint(
         : "white";
 
     gameData.push({
-      moveRecords: analysis.move_records ?? [],
-      criticalMoments: analysis.critical_moments ?? [],
+      moveRecords: Array.isArray(analysis.move_records) ? analysis.move_records : [],
+      criticalMoments: Array.isArray(analysis.critical_moments) ? analysis.critical_moments : [],
       pgn: meta.pgn,
       playerColor,
       result: meta.result,
