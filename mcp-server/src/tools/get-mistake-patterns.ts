@@ -41,7 +41,7 @@ export async function handleGetMistakePatterns(
   // Filter analyses by time_control if requested
   const filteredAnalyses = input.time_control
     ? analyses.filter((a) => {
-        const meta = gameMap.get(a.player_game_id);
+        const meta = gameMap.get(Number(a.player_game_id));
         return meta?.time_control?.toLowerCase().includes(input.time_control!) ?? false;
       })
     : analyses;
@@ -58,15 +58,15 @@ export async function handleGetMistakePatterns(
 
   // Determine player color from most frequent color in stored games
   const whiteCounts = filteredAnalyses.filter(
-    (a) => gameMap.get(a.player_game_id)?.player_color === "white"
+    (a) => gameMap.get(Number(a.player_game_id))?.player_color === "white"
   ).length;
   const color = whiteCounts >= filteredAnalyses.length / 2 ? "white" : "black";
 
   // Extract move records and critical moments
-  const allMoveRecords = filteredAnalyses.map((a) => a.move_records ?? []);
-  const allMoments = filteredAnalyses.map((a) => a.critical_moments ?? []);
+  const allMoveRecords = filteredAnalyses.map((a) => Array.isArray(a.move_records) ? a.move_records : []);
+  const allMoments = filteredAnalyses.map((a) => Array.isArray(a.critical_moments) ? a.critical_moments : []);
   const gameMetas = filteredAnalyses.map((a) => {
-    const meta = gameMap.get(a.player_game_id);
+    const meta = gameMap.get(Number(a.player_game_id));
     return {
       opening_eco: meta?.opening_eco ?? null,
       opening_name: meta?.opening_name ?? null,
