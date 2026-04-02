@@ -124,6 +124,61 @@ If you run Docker on a non-default port, tell the MCP server:
 
 ---
 
+## PostgreSQL Game Store (Optional)
+
+The `refresh_games`, `get_mistake_patterns`, and `get_style_fingerprint` tools require a PostgreSQL database to store and query game analyses. The other 5 tools work without it.
+
+### Step 1 — Start Postgres
+
+Postgres is included in the same `docker-compose.yml` as Stockfish:
+
+```bash
+cd mcp-server
+docker compose up -d postgres
+```
+
+Or start both at once:
+
+```bash
+docker compose up -d
+```
+
+Verify:
+```bash
+docker exec chess-postgres pg_isready -U chess -d chess_context
+# → /var/run/postgresql:5432 - accepting connections
+```
+
+### Step 2 — Configure DATABASE_URL
+
+Add `DATABASE_URL` to your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "chess-context": {
+      "command": "node",
+      "args": ["/path/to/mcp-chess/mcp-server/dist/index.js"],
+      "env": {
+        "DATABASE_URL": "postgresql://chess:chess@localhost:5432/chess_context"
+      }
+    }
+  }
+}
+```
+
+The server automatically runs schema migrations on startup — no manual SQL needed. If `DATABASE_URL` is not set, the game store tools return a `note` field explaining the requirement; all other tools continue working normally.
+
+### Step 3 — Fetch and Analyze Games
+
+```
+"Refresh my last 20 games: username notsobrillantmove on chess.com"
+```
+
+This calls `refresh_games`, which fetches games from Chess.com, inserts them into Postgres, and queues them for background Stockfish analysis. After ~30–60 seconds, `get_mistake_patterns` and `get_style_fingerprint` will have data to work with.
+
+---
+
 ## Optional: Lichess API Token
 
 ChessContext works without any API keys. Adding a Lichess token gives you higher rate limits for fetching game history:
