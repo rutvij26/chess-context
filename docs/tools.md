@@ -207,6 +207,236 @@ Fetch comprehensive statistics for a Chess.com or Lichess player.
 
 ---
 
+## `refresh_games`
+
+Fetch and store a player's recent games from Chess.com or Lichess into the local game store, then queue them for engine analysis in the background.
+
+Run this before using `get_mistake_patterns` or `get_style_fingerprint` — those tools read from the stored analyses.
+
+### Input
+
+```typescript
+{
+  username: string                      // Player username
+  platform: "chess.com" | "lichess"    // Which platform to fetch from
+  count?: number                        // Games to fetch. Default: 20, max: 50.
+}
+```
+
+### Output
+
+```json
+{
+  "username": "notsobrillantmove",
+  "platform": "chess.com",
+  "fetched": 20,
+  "new_games": 5,
+  "queued_for_analysis": 5,
+  "already_analyzed": 15,
+  "status": "processing",
+  "note": "Analysis running in the background. Allow ~30–60s per 20 games on first run, near-instant on reruns (eval cache)."
+}
+```
+
+Returns immediately. Analysis runs in the background via a `setImmediate` queue — the server stays responsive to other MCP calls while Stockfish processes each game.
+
+### Requires
+
+`DATABASE_URL` env var pointing to a running PostgreSQL instance. See [Installation — PostgreSQL setup](#postgresql-game-store-optional).
+
+### Example Prompts
+
+- *"Refresh my Chess.com games: notsobrillantmove"*
+- *"Fetch my last 50 Lichess games for rootviz and analyze them"*
+
+---
+
+## `review_game`
+
+Post-game debrief for a specific game. Analyzes accuracy by phase, identifies the key turning point, and provides study recommendations. Output depth adapts to the player's rating.
+
+### Input
+
+```typescript
+{
+  pgn?: string              // PGN string of the game
+  game_url?: string         // Chess.com or Lichess game URL
+  lichess_id?: string       // Lichess game ID (8 chars)
+  player_username?: string  // Whose perspective to review from
+  depth?: number            // Analysis depth. Default: 18.
+}
+// At least one of pgn, game_url, or lichess_id is required.
+```
+
+### Output
+
+```json
+{
+  "game_info": {
+    "white": "notsobrillantmove",
+    "black": "opponent",
+    "result": "0-1",
+    "opening": "Sicilian Defense",
+    "platform": "chess.com"
+  },
+  "player": {
+    "username": "notsobrillantmove",
+    "color": "white",
+    "rating": 1050,
+    "level": "club"
+  },
+  "phase_performance": [
+    { "phase": "opening",     "accuracy": 82, "grade": "B", "moves": "1-13",  "note": "Solid development, no early mistakes" },
+    { "phase": "middlegame",  "accuracy": 61, "grade": "D", "moves": "14-34", "note": "2 mistakes, 1 blunder — critical phase" },
+    { "phase": "endgame",     "accuracy": 78, "grade": "C", "moves": "35-52", "note": "Decent technique but advantage was lost earlier" }
+  ],
+  "turning_point": {
+    "move_number": 22,
+    "move_played": "Nd4",
+    "best_move": "f5",
+    "eval_drop_cp": 280,
+    "explanation": "Nd4 handed back the initiative. f5 would have kept the attack alive."
+  },
+  "overall_accuracy": 72,
+  "study_recommendations": [
+    "Review the Sicilian middlegame — your piece coordination broke down around move 20.",
+    "Practice tactical puzzles focusing on knight maneuvers."
+  ],
+  "narrative": "A solid opening gave way to middlegame difficulties. The game turned at move 22 with Nd4, after which the advantage gradually transferred to Black."
+}
+```
+
+Output detail adapts by level: beginners get plain English only; club players (1000–1800) see engine lines for critical moments; advanced players (1800+) get full technical detail.
+
+### Example Prompts
+
+- *"Review my last game from https://www.chess.com/game/live/12345 — I'm notsobrillantmove"*
+- *"Give me a post-game debrief for this Lichess game: [URL]"*
+
+---
+
+## `get_mistake_patterns`
+
+Scan a player's stored game analyses and identify recurring mistake patterns — not just "you blundered 5 times" but systematic weaknesses.
+
+### Input
+
+```typescript
+{
+  username: string                          // Player username
+  platform: "chess.com" | "lichess"        // Which platform
+  num_games?: number                        // Games to scan. Default: 20, max: 50.
+  time_control?: "bullet" | "blitz" | "rapid"  // Optional filter
+}
+```
+
+### Output
+
+```json
+{
+  "username": "notsobrillantmove",
+  "games_analyzed": 18,
+  "games_available": 20,
+  "patterns": [
+    {
+      "pattern_type": "blunder_cluster_time_pressure",
+      "frequency": 7,
+      "phase": "middlegame",
+      "description": "You blundered 11 times across 7 games in moves 30–50, typically when the clock is low. Your accuracy drops significantly under time pressure.",
+      "example_game_index": 2,
+      "suggested_study": "Practice time management — make faster, simpler moves when low on time. Solve 1-minute tactical puzzles to speed up threat detection."
+    },
+    {
+      "pattern_type": "hanging_pieces",
+      "frequency": 5,
+      "phase": "middlegame",
+      "description": "You left pieces en prise or hanging in 5 games (6 total instances), losing significant material in the middlegame.",
+      "suggested_study": "Before every move, do a quick safety check: scan all your pieces and ask 'is each piece defended?'"
+    }
+  ],
+  "overall_summary": "Analyzed 18 games: 14 blunders and 9 mistakes detected. Found 2 recurring patterns — the top priority is \"blunder cluster time pressure\"."
+}
+```
+
+Detected patterns (v0.6):
+
+| Pattern | Description |
+|---------|-------------|
+| `blunder_cluster_time_pressure` | Blunders concentrated in moves 30–50 across ≥2 games — proxy for clock trouble |
+| `opening_preparation_gap` | Mistakes in the first 15 moves across ≥3 games, grouped by opening ECO |
+| `endgame_technique` | Player had eval >+150cp in endgame, game result was draw/loss |
+| `hanging_pieces` | eval drop ≥300cp in middlegame (moves 12–30) across ≥2 games |
+| `repeated_opening_collapse` | Same ECO leading to eval <-100cp by move 15 in ≥3 games |
+
+### Requires
+
+`DATABASE_URL` + `refresh_games` run first to populate the game store.
+
+### Example Prompts
+
+- *"What mistakes am I repeating? username: notsobrillantmove, chess.com"*
+- *"Find my blitz-specific mistake patterns on Lichess"*
+
+---
+
+## `get_style_fingerprint`
+
+Characterize a player's chess style across 5 dimensions derived from stored game analyses.
+
+### Input
+
+```typescript
+{
+  username: string                      // Player username
+  platform: "chess.com" | "lichess"    // Which platform
+  num_games?: number                    // Games to analyze. Default: 50.
+}
+```
+
+### Output
+
+```json
+{
+  "username": "rootviz",
+  "platform": "lichess",
+  "games_analyzed": 47,
+  "fingerprint": {
+    "aggression": 72,
+    "positional_sense": 58,
+    "tactical_sharpness": 65,
+    "endgame_skill": 44,
+    "time_management": 61
+  },
+  "style_label": "Aggressive Tactician",
+  "description": "You play aggressively, pushing pawns and seeking tactical complications. Your tactical vision is sharp and you find combinations reliably. Endgame conversion is an area to work on — winning positions sometimes slip away."
+}
+```
+
+**Dimension scoring:**
+
+| Dimension | Derived from | Range |
+|-----------|--------------|-------|
+| `aggression` | Pawn advances past rank 5 + piece sacrifice events per game | 0–100 |
+| `positional_sense` | Strategic accuracy (inaccuracies/moves in non-tactical positions) | 0–100 |
+| `tactical_sharpness` | % of critical moments where best move was found (eval_drop < 30cp) | 0–100 |
+| `endgame_skill` | Win conversion rate when entering endgame with >+150cp advantage | 0–100 |
+| `time_management` | Avg clock % remaining at move 30 (Lichess only) | 0–100 or `null` |
+
+`time_management` is always `null` for Chess.com players (no clock data in PGN export).
+
+**Style labels:** Aggressive Tactician · Dynamic Imbalance Seeker · Sharp Gambiteer · Solid Positional Player · Reactive Defender · Balanced All-Rounder
+
+### Requires
+
+`DATABASE_URL` + `refresh_games` run first to populate the game store.
+
+### Example Prompts
+
+- *"What's my chess style? rootviz on Lichess"*
+- *"Give me a style fingerprint for notsobrillantmove on chess.com"*
+
+---
+
 ## `scout_opponent`
 
 Generate a pre-game scouting report with strategic recommendations.
@@ -335,6 +565,70 @@ All types are defined in `mcp-server/src/types/index.ts`. This section documents
 | `recent_form.last_n_games` | `number` | Sample size |
 | `recent_form.wins/draws/losses` | `number` | Results breakdown |
 | `recent_form.rating_trend` | `"rising" \| "falling" \| "stable"` | Rating direction |
+
+#### `ReviewGameOutput` (returned by `review_game`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `game_info` | `object` | White, black, result, opening, platform |
+| `player.username` | `string` | Reviewed player's username |
+| `player.color` | `"white" \| "black"` | Player's color |
+| `player.rating` | `number \| null` | Player's rating at time of game |
+| `player.level` | `"beginner" \| "club" \| "advanced"` | Detected level (beginner <1000, club 1000–1800, advanced >1800) |
+| `phase_performance[]` | `PhaseGrade[]` | Per-phase accuracy + letter grade (A–F) |
+| `phase_performance[].phase` | `string` | Phase name |
+| `phase_performance[].accuracy` | `number` | Accuracy % for that phase |
+| `phase_performance[].grade` | `string` | Letter grade (A ≥90, B ≥80, C ≥70, D ≥60, F <60) |
+| `phase_performance[].moves` | `string` | Move range (e.g. "14-34") |
+| `phase_performance[].note` | `string` | One-sentence phase summary |
+| `turning_point` | `object \| null` | Move with largest eval_drop_cp |
+| `overall_accuracy` | `number` | Player's overall accuracy (0–100) |
+| `study_recommendations` | `string[]` | 1–3 actionable study suggestions |
+| `narrative` | `string` | 2–3 sentence plain-language debrief |
+
+#### `GetMistakePatternsOutput` (returned by `get_mistake_patterns`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `username` | `string` | Player username |
+| `games_analyzed` | `number` | Games actually scanned |
+| `games_available` | `number` | Total analyses in the store |
+| `patterns[]` | `MistakePattern[]` | Detected patterns, sorted by frequency |
+| `patterns[].pattern_type` | `string` | Pattern identifier (e.g. `"blunder_cluster_time_pressure"`) |
+| `patterns[].frequency` | `number` | Number of games where pattern appeared |
+| `patterns[].phase` | `"opening" \| "middlegame" \| "endgame"` | Phase the pattern occurs in |
+| `patterns[].description` | `string` | Specific description with counts |
+| `patterns[].example_game_index` | `number` | Index into stored analyses for an example |
+| `patterns[].suggested_study` | `string` | Actionable study recommendation |
+| `overall_summary` | `string` | One-sentence summary of findings |
+
+#### `GetStyleFingerprintOutput` (returned by `get_style_fingerprint`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `username` | `string` | Player username |
+| `platform` | `"chess.com" \| "lichess"` | Platform |
+| `games_analyzed` | `number` | Games used for the fingerprint |
+| `fingerprint.aggression` | `number` | 0–100 aggression score |
+| `fingerprint.positional_sense` | `number` | 0–100 positional accuracy score |
+| `fingerprint.tactical_sharpness` | `number` | 0–100 tactical opportunity conversion rate |
+| `fingerprint.endgame_skill` | `number` | 0–100 endgame win conversion rate |
+| `fingerprint.time_management` | `number \| null` | 0–100 avg clock % at move 30. Always null for Chess.com. |
+| `style_label` | `string` | One of 6 archetypes |
+| `description` | `string` | 2–3 sentence style narrative |
+
+#### `RefreshGamesOutput` (returned by `refresh_games`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `username` | `string` | Player username |
+| `platform` | `"chess.com" \| "lichess"` | Platform |
+| `fetched` | `number` | Games fetched from API |
+| `new_games` | `number` | Games inserted (not already in store) |
+| `queued_for_analysis` | `number` | New games queued for background analysis |
+| `already_analyzed` | `number` | Games that already had analyses (skipped) |
+| `status` | `"processing" \| "idle"` | Background pipeline state |
+| `note` | `string` | Timing guidance |
 
 #### `ScoutReport` (returned by `scout_opponent`)
 

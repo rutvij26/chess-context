@@ -50,15 +50,19 @@ Raw Stockfish gives centipawn scores. This server additionally provides:
 │              LAYER 3: MCP TOOLS                 │
 │  analyze_position · analyze_game                │
 │  get_player_stats · scout_opponent              │
+│  refresh_games · review_game                    │
+│  get_mistake_patterns · get_style_fingerprint   │
 ├─────────────────────────────────────────────────┤
 │           LAYER 2: INTELLIGENCE                 │
 │  Position Classifier · Theme Tagger             │
 │  Narrative Generator · Critical Moments         │
+│  Player Level · Pattern Scanner · Style Analyzer│
 ├─────────────────────────────────────────────────┤
 │            LAYER 1: FOUNDATION                  │
 │  Engine Router · Docker Stockfish               │
 │  WASM Stockfish (fallback) · LRU Cache          │
 │  Chess.com API · Lichess API                    │
+│  PostgreSQL Game Store (optional)               │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -104,7 +108,15 @@ src/engines/
 
 **`data/chesscom-api.ts`** — Chess.com REST client. Fetches profiles, ratings, game archives (PGN format). Handles 404 as `PlayerNotFoundError`, retries on 429.
 
-**`data/lichess-api.ts`** — Lichess REST client. Parses NDJSON game streams. Uses `?opening=true` parameter for free ECO codes on every game.
+**`data/lichess-api.ts`** — Lichess REST client. Parses NDJSON game streams. Uses `?opening=true` parameter for free ECO codes on every game. Includes `clocks=true` to embed `[%clk]` annotations used by the style fingerprint's time management dimension.
+
+**`store/db.ts`** — postgres.js v3 client. Lazy-initialised on first call. `migrate()` runs the DDL in `schema.sql` idempotently on startup. `isDbConfigured()` checks for `DATABASE_URL` — all store tools degrade gracefully when it is absent.
+
+**`store/game-store.ts`** — `insertGames()` (upsert, skips duplicates by `platform+username+game_id`), `getGamesForUser()`, `getUnanalyzedGameIds()`.
+
+**`store/analysis-store.ts`** — `insertAnalysis()` (stores `MoveRecord[]` and `CriticalMoment[]` as JSONB), `getAnalysesForUser()`, `getAnalysisForGame()`.
+
+**`store/analysis-pipeline.ts`** — Background queue processor. `enqueueUnanalyzedGames()` inserts pending rows into `analysis_queue`. `startPipeline()` fires `processNextQueued()` via `setImmediate` — each game is claimed atomically (UPDATE … RETURNING), analyzed with `analyzeGameFull()`, results stored, then the next item is scheduled via another `setImmediate`. The server event loop is never blocked.
 
 **`cache/index.ts`** — Two in-memory caches:
 - Position cache (LRU, 500 entries): `fen:depth:multiPv → UCIAnalysisLine[]`. No TTL — eval is deterministic.
@@ -120,6 +132,9 @@ Pure functions — no I/O, no side effects. Takes chess.js board state and engin
 - **`theme-tagger.ts`** — `tagThemes()` returns up to 15 active themes per position using chess.js board inspection: king safety, pawn storm, space advantage, piece activity, bishop pair, knight outpost, open file, weak squares, pin, fork potential, back rank, opposite-colored bishops, rook on 7th, connected rooks, material imbalance.
 - **`narrative-generator.ts`** — `generateNarrative()` composes 2-4 sentences from phase + structure + top themes + eval. Template-based — deterministic and fast. Themes are ranked by phase relevance (e.g., king safety ranks higher in the middlegame, passed pawns rank higher in the endgame).
 - **`critical-moments.ts`** — `detectCriticalMoments()` classifies each move: blunder (≥200cp drop), mistake (≥100cp), inaccuracy (≥50cp), missed_win (had >300cp, dropped below 100cp). `computeAccuracy()` measures % of moves within 30cp of best.
+- **`player-level.ts`** — `detectPlayerLevel(rating)` maps rating to `beginner` (<1000), `club` (1000–1800), or `advanced` (>1800). `buildStudyRecommendations()` generates 1–3 study suggestions from phase grades and error patterns. `filterMomentsForLevel()` controls how much engine detail is surfaced to the player.
+- **`pattern-scanner.ts`** — `detectMistakePatterns()` scans `MoveRecord[][]` and `CriticalMoment[][]` across multiple games. Detects 5 pattern types: time-pressure blunder clusters, opening preparation gaps, endgame technique failures, hanging pieces, and repeated opening collapses. All detectors return `null` when frequency is below threshold (≥2–3 occurrences).
+- **`style-analyzer.ts`** — `computeStyleFingerprint()` scores 5 dimensions: aggression (pawn advances + sacrifice events), positional_sense (strategic accuracy), tactical_sharpness (% of critical moves found), endgame_skill (win conversion rate with advantage), time_management (`[%clk]` annotations, Lichess only). `deriveStyleLabel()` maps scores to one of 6 archetypes. `buildStyleDescription()` generates a 2–3 sentence narrative.
 
 ---
 
@@ -128,9 +143,13 @@ Pure functions — no I/O, no side effects. Takes chess.js board state and engin
 Orchestrates Layers 1 and 2 into MCP tool handlers. Each tool is a single file with a single exported handler function.
 
 - **`analyze-position.ts`** — `getEval()` (via router) → classify → tag → narrative → SAN conversion.
-- **`analyze-game.ts`** — Resolve PGN (direct/URL/username) → replay with chess.js → `Promise.all` over `getEval()` for all positions → detect critical moments → compute accuracy.
+- **`analyze-game.ts`** — Resolve PGN (direct/URL/username) → replay with chess.js → `Promise.all` over `getEval()` for all positions → detect critical moments → compute accuracy. Also exports `analyzeGameFull()` for the background pipeline (returns both `GameAnalysis` and `MoveRecord[]`).
 - **`get-player-stats.ts`** — Thin dispatch: check player cache → call correct API client → cache result.
 - **`scout-opponent.ts`** — Calls `get-player-stats` internally → analyze repertoire vs your color → rule-based strategic recommendation.
+- **`refresh-games.ts`** — Fetch games from Chess.com/Lichess API → upsert into `player_games` → enqueue unanalyzed games → start background pipeline → return immediately with queue status.
+- **`review-game.ts`** — Calls `handleAnalyzeGame()` → detects player color and rating → `detectPlayerLevel()` → computes per-phase accuracy and letter grades → finds turning point (largest `eval_drop_cp`) → generates study recommendations and narrative.
+- **`get-mistake-patterns.ts`** — Queries `getAnalysesForUser()` → optional time_control filter → calls `detectMistakePatterns()` → returns ranked patterns with overall summary.
+- **`get-style-fingerprint.ts`** — Queries `getAnalysesForUser()` + `getGamesForUser()` → builds `GameDataForStyle[]` → calls `computeStyleFingerprint()` → returns fingerprint, style label, and description.
 
 ---
 
