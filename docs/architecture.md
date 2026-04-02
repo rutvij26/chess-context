@@ -182,7 +182,7 @@ Without Docker (WASM fallback), the same analysis takes 30–60s+ and may hit th
 
 ### Adaptive Depth in `analyze_game`
 
-All positions in `analyze_game` are evaluated at `quietDepth` (default 12). The `analyze_position` tool uses `defaultDepth` (default 18) for deep single-position analysis.
+`analyze_game` uses a two-pass approach. Pass 1 evaluates all positions at `quietDepth` (default 10). Any position where the eval swing exceeds `quietThreshold` (30cp) is re-evaluated at `criticalDepth` (default 16) in Pass 2. The `analyze_position` tool uses `defaultDepth` (default 18) for deep single-position analysis.
 
 ### Caching
 
@@ -345,3 +345,59 @@ See `CLAUDE.md`'s "Adding a Tool" section for the full workflow. The short versi
 2. Create `src/tools/your-tool.ts` with `handleYourTool(input)`
 3. Register in `src/index.ts`
 4. Document in `docs/tools.md` and update the file map above
+
+---
+
+## Design Decisions
+
+- **Why Stockfish depth 18 as default?** Accuracy vs speed tradeoff for amateur games (sub-2000 rated). Depth 18 reliably detects all blunders and most mistakes. Depth 20+ has diminishing accuracy returns for this skill range.
+
+- **Why two-pass adaptive depth (quietDepth=10, criticalDepth=16)?** Pass 1 sweeps all positions at depth 10 (~50ms/position with Docker) to detect eval swings. Positions with swings > `quietThreshold` (30cp) are re-evaluated at depth 16. This reduces total analysis time by ~60% vs uniform depth-16.
+
+- **Why WASM Stockfish as fallback?** Zero infrastructure requirement for local users. Tradeoff: single-threaded WASM is 5-10x slower than Docker. The pool variant (Worker Threads) bridges the gap.
+
+- **Why stdio transport (not HTTP)?** Claude Desktop's MCP client connects via stdio. The protocol is designed for this. HTTP transport would require a different client configuration.
+
+- **Why SQLite for eval cache?** Persists across server restarts without any external infrastructure. Evals are deterministic (same FEN + depth + multiPv always produces the same result), so no TTL needed.
+
+- **Why axios instead of fetch?** Stockfish WASM (the npm package) has a known side effect: it sets `global.fetch = null` during initialization. Axios uses Node.js's `http.request` internally and is unaffected by this.
+
+- **Why console.error() for all logging?** The MCP server communicates with Claude Desktop via stdout (JSON-RPC). Any non-JSON on stdout corrupts the protocol. All logs go to stderr.
+
+---
+
+## Operations
+
+### Logging Strategy
+
+- All log output goes to `console.error()` — never `console.log()` (stdout is MCP JSON-RPC)
+- Log prefix format: `[ComponentName] message: detail` (e.g. `[EngineRouter] Docker health check failed: ECONNREFUSED`)
+- What is logged: engine init events, API errors, retry attempts, Docker health checks, semaphore queue depth (at debug level)
+- Reading debug output: `node dist/index.js 2>mcp-debug.log` to capture stderr separately
+
+### Error Handling Strategy
+
+- Tool level: all errors caught at the handler boundary, logged to stderr, returned as MCP error responses (not crashes)
+- Engine level: errors return `null`, caller (engine-router) falls back to next available backend
+- API level: 404 → returns null (not found); 429 → one retry with jitter; other errors → log + return null
+- No silent swallowing: every `catch` block either logs or re-throws
+
+### Security Considerations
+
+- `LICHESS_TOKEN`: stored as env var, never logged, sent only in `Authorization: Bearer <token>` header
+- API tokens never appear in MCP JSON responses
+- Rate limit handling: Lichess semaphore (default 10 concurrent, 25 with token) keeps the server within allowed limits
+- On 429: single retry with 1-2s jitter, then degrades gracefully — no crash, no token exposure
+
+### Testing Strategy for the Intelligence Layer
+
+- All functions in `src/intelligence/` are pure — test them directly with `Chess` board instances
+- Test fixtures: known FEN strings with expected classification outcomes
+- No mocking required: just `new Chess(fen)` and plain function calls
+- See `src/intelligence/*.test.ts` for patterns to follow when adding tests
+
+### Schema Versioning
+
+- Breaking input/output schema changes: add a versioned tool (e.g. `analyze_game_v2`) rather than modifying the existing schema
+- Additive changes (new optional output fields): non-breaking, no version bump needed
+- Deprecation process: announce in `CHANGELOG.md` one minor version before removal
