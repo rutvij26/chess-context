@@ -2,6 +2,47 @@
 
 ChessContext is built on a three-layer design. The key principle: **the MCP provides chess meaning, Claude provides the reasoning.**
 
+---
+
+## System Boundaries
+
+### What this system does
+
+chess-context is a **deterministic pre-processing layer** that transforms raw chess data (PGN, FEN, player history) into structured, semantically enriched JSON before it reaches Claude. It runs Stockfish, calls Chess.com and Lichess APIs, classifies positions, and annotates moves.
+
+### What Claude does
+
+Claude receives the enriched JSON and generates natural language responses. Claude does not run any engine or call any external API — all computation happens before Claude sees any data.
+
+### Concrete example
+
+| Step | Performed by |
+|------|-------------|
+| Fetch PGN from Chess.com | this server (data layer) |
+| Run Stockfish at depth 18 | this server (engine layer) |
+| Classify position as "knight outpost in middlegame" | this server (intelligence layer) |
+| Explain the knight outpost in plain language | Claude |
+
+### Deterministic vs heuristic pipeline
+
+Not all logic is equal:
+
+- **Deterministic (rule-based):** pawn structure detection, material balance calculation, game phase by piece count, critical moment thresholds (≥200cp = blunder regardless of position)
+- **Heuristic (threshold-based):** theme tagging (e.g. "king safety concern" fires when shield pawns < 2), complexity estimation, space advantage (fires when ≥10 moves target advanced squares)
+
+### What enriched output adds over raw Stockfish
+
+Raw Stockfish gives centipawn scores. This server additionally provides:
+
+- Human-readable move categorisation (brilliant / good / inaccuracy / mistake / blunder)
+- Position themes (pin, fork potential, back rank weakness, knight outpost, …)
+- Pawn structure labels (isolated, doubled, passed, backward, hanging, …)
+- 2–4 sentence narrative ready for Claude to use or quote directly
+- Opening name, game phase, material balance in centipawns
+- Accuracy percentage per player
+
+---
+
 ## The Three Layers
 
 ```
