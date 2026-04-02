@@ -12,6 +12,7 @@ import { handleRefreshGames } from "./tools/refresh-games.js";
 import { handleReviewGame } from "./tools/review-game.js";
 import { handleGetMistakePatterns } from "./tools/get-mistake-patterns.js";
 import { handleGetStyleFingerprint } from "./tools/get-style-fingerprint.js";
+import { handleGetAnalysisProgress } from "./tools/get-analysis-progress.js";
 import {
   AnalyzePositionInputSchema,
   AnalyzeGameInputSchema,
@@ -21,6 +22,7 @@ import {
   ReviewGameInputSchema,
   GetMistakePatternsInputSchema,
   GetStyleFingerprintInputSchema,
+  GetAnalysisProgressInputSchema,
 } from "./types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -178,6 +180,24 @@ server.registerTool(
   },
   async (input) => {
     const result = await handleGetStyleFingerprint(input);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.registerTool(
+  "get_analysis_progress",
+  {
+    title: "Get Analysis Progress",
+    description:
+      "Check how many of a player's stored games have been analyzed by the engine. " +
+      "Returns counts for analyzed, pending, processing, and failed games, plus an overall progress percentage. " +
+      "Use this after refresh_games to monitor when background analysis is complete before calling get_mistake_patterns or get_style_fingerprint.",
+    inputSchema: GetAnalysisProgressInputSchema,
+  },
+  async (input) => {
+    const result = await handleGetAnalysisProgress(input);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };

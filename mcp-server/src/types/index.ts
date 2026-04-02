@@ -409,3 +409,23 @@ export interface GetStyleFingerprintOutput {
   description: string;
   note?: string;
 }
+
+// get_analysis_progress
+export const GetAnalysisProgressInputSchema = z.object({
+  username: z.string().describe("Player username on the platform"),
+  platform: z.enum(["chess.com", "lichess"]),
+});
+export type GetAnalysisProgressInput = z.infer<typeof GetAnalysisProgressInputSchema>;
+
+export interface GetAnalysisProgressOutput {
+  username: string;
+  platform: string;
+  total_games: number;
+  analyzed: number;
+  pending: number;
+  processing: number;
+  failed: number;
+  progress_pct: number;
+  status: "idle" | "processing" | "complete" | "no_games";
+  summary: string;
+}

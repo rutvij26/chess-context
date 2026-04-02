@@ -94,6 +94,27 @@ export async function getAnalysisForGame(
   return rows[0] ?? null;
 }
 
+export interface QueueStatusRow {
+  status: string;
+  count: number;
+}
+
+export async function getQueueStatusForUser(
+  platform: string,
+  username: string
+): Promise<QueueStatusRow[]> {
+  const db = sql();
+  const rows = await db<{ status: string; count: string }[]>`
+    SELECT aq.status, COUNT(*) as count
+    FROM analysis_queue aq
+    JOIN player_games pg ON pg.id = aq.player_game_id
+    WHERE pg.platform = ${platform}
+      AND pg.username = ${username.toLowerCase()}
+    GROUP BY aq.status
+  `;
+  return rows.map((r) => ({ status: r.status, count: parseInt(r.count, 10) }));
+}
+
 export async function countAnalysesForUser(
   platform: string,
   username: string
