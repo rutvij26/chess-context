@@ -1,14 +1,12 @@
 # Roadmap
 
 ### Known Issues
-- [ ] **BUG [`analyze_game` timeout]** — Times out if called before Stockfish WASM initializes
-      (~30–60s after server start). Positions not in Lichess cloud DB get eval=0, producing
-      meaningless accuracy scores and zero critical moments.
-      Workaround: wait ~60s after connecting. Fix: v0.5 readiness gate + eval cache.
-      → [#1](https://github.com/rutvij26/chess-context/issues/1)
+- [x] **BUG [`analyze_game` timeout]** — Fixed in v0.5: readiness gate (#4) blocks tool calls
+      until Stockfish is initialized. SQLite cache (#5) serves warmed positions instantly.
+      → [#1](https://github.com/rutvij26/chess-context/issues/1) ✅
 - [ ] **PERF [`analyze_game` sequential fallback]** — Cloud-eval misses fall back to
       single-threaded WASM sequentially. Lower-rated games can hit the 50s timeout.
-      Fix: v0.5 Worker Thread spike.
+      Worker Thread spike deferred (#9 closed). Mitigated by cloud eval concurrency=10 (#6).
       → [#2](https://github.com/rutvij26/chess-context/issues/2)
 - [x] **DATA [`get_player_stats` / `scout_opponent` opening names]** — PGN clock annotations
       (`{[%clk ...]}`) leaked into opening name strings. Fixed in latest commit.
@@ -26,16 +24,16 @@
 - [x] Adaptive depth analysis (~60% faster game analysis)
 - [x] CI pipeline (TypeScript compile check)
 
-### v0.5 — Hardening _(engine reliability, no new tools)_
-- [ ] Engine readiness gate — tool calls block until Stockfish is initialized → [#4](https://github.com/rutvij26/chess-context/issues/4)
-- [ ] Disk-backed eval cache (SQLite via better-sqlite3, survives restarts) → [#5](https://github.com/rutvij26/chess-context/issues/5)
-- [ ] Lichess cloud eval concurrency: 4 → 10 concurrent requests → [#6](https://github.com/rutvij26/chess-context/issues/6)
-- [ ] Adaptive depth: depth 10 quiet / depth 16 critical (currently 12/18) → [#7](https://github.com/rutvij26/chess-context/issues/7)
-- [ ] MCP progress notifications for game analysis ("Evaluating position 34/80…") → [#8](https://github.com/rutvij26/chess-context/issues/8)
-- [ ] Spike: multi-threaded Stockfish WASM in Node.js Worker Thread → [#9](https://github.com/rutvij26/chess-context/issues/9)
-- [ ] Expand pawn structures: 10 → 30 canonical types → [#10](https://github.com/rutvij26/chess-context/issues/10)
-- [ ] Expand themes: 15 → 50+ → [#11](https://github.com/rutvij26/chess-context/issues/11)
-- [ ] Redis cache option (optional upgrade from SQLite) → [#12](https://github.com/rutvij26/chess-context/issues/12)
+### v0.5 — Hardening ✅ _(engine reliability, no new tools)_
+- [x] Engine readiness gate — tool calls block until Stockfish is initialized → [#4](https://github.com/rutvij26/chess-context/issues/4)
+- [x] Disk-backed eval cache (SQLite via better-sqlite3, survives restarts) → [#5](https://github.com/rutvij26/chess-context/issues/5)
+- [x] Lichess cloud eval concurrency: 4 → 10 concurrent requests → [#6](https://github.com/rutvij26/chess-context/issues/6)
+- [x] Adaptive depth: depth 10 quiet / depth 16 critical (currently 12/18) → [#7](https://github.com/rutvij26/chess-context/issues/7)
+- [x] MCP progress notifications for game analysis ("Evaluating position 34/80…") → [#8](https://github.com/rutvij26/chess-context/issues/8)
+- [ ] ~~Spike: multi-threaded Stockfish WASM in Node.js Worker Thread~~ → deferred, mitigated by #6 → [#9](https://github.com/rutvij26/chess-context/issues/9)
+- [ ] ~~Expand pawn structures: 10 → 30 canonical types~~ → deferred to v0.6 → [#10](https://github.com/rutvij26/chess-context/issues/10)
+- [ ] ~~Expand themes: 15 → 50+~~ → deferred to v0.6 → [#11](https://github.com/rutvij26/chess-context/issues/11)
+- [ ] ~~Redis cache option (optional upgrade from SQLite)~~ → deferred to v1.0 → [#12](https://github.com/rutvij26/chess-context/issues/12)
 
 ### v0.6 — Post-Game Intelligence _(7 tools total)_
 3 new tools. All output adapts explanation depth to detected player level

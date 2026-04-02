@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 ## Status
-v0.1.0 — 4 tools live. `analyze_game` has known timeout bug (see ROADMAP #1).
-Next: v0.5 hardening → v0.6 (7 tools) → v0.7 (10 tools).
+v0.5.0 — 4 tools live. Engine hardening complete (readiness gate, SQLite cache, cloud eval concurrency, adaptive depth, progress notifications).
+Next: v0.6 (7 tools) → v0.7 (10 tools).
 
 ## Commands
 ```bash
