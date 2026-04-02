@@ -43,7 +43,8 @@ mcp-server/src/
 | Var | Default | Desc |
 |-----|---------|------|
 | `STOCKFISH_DEPTH` | `18` | default depth |
-| `STOCKFISH_QUIET_DEPTH` | `12` | quiet positions |
+| `STOCKFISH_QUIET_DEPTH` | `10` | quiet positions (pass 1) |
+| `STOCKFISH_CRITICAL_DEPTH` | `16` | critical positions (pass 2) |
 | `STOCKFISH_TIMEOUT` | `30000` | ms per position |
 | `STOCKFISH_READINESS_TIMEOUT` | `90000` | ms to wait for engine init before rejecting tool calls |
 | `LICHESS_TOKEN` | — | optional, higher rate limits |

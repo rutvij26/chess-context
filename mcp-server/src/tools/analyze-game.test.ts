@@ -148,14 +148,17 @@ describe("handleAnalyzeGame — output shape", () => {
 
 describe("handleAnalyzeGame — critical moments", () => {
   it("detects a blunder when a move causes a 200cp+ drop", async () => {
-    // Positions 0-3: eval=20 (equal). Position 4 (after move 4 by white): eval=-250.
-    // This means white's 2nd move (move 3 in 0-indexed half-moves, move 2 full-moves)
-    // caused a 270cp drop (20 → -250 from white's perspective).
+    // Positions 0-3: eval=20 (equal). Position 4: eval=-250.
+    // The swing triggers the critical-depth second pass, which re-evaluates
+    // position 4. We key the blunder on the FEN so both passes return -250.
     let callCount = 0;
-    getEvalMock.mockImplementation(async () => {
+    let blunderFen: string | null = null;
+    getEvalMock.mockImplementation(async (fen: string) => {
       callCount++;
-      // Position 4 (0-indexed): eval swings to -250cp for white
       if (callCount === 4) {
+        blunderFen = fen;
+      }
+      if (blunderFen !== null && fen === blunderFen) {
         return [{ depth: 18, score_cp: -250, score_mate: null, pv: ["e2e4"], multipv_rank: 1 }];
       }
       return [makeEvalLine(20)];
@@ -265,6 +268,42 @@ describe("handleAnalyzeGame — URL resolution", () => {
     await expect(
       handleAnalyzeGame({ game_url: "https://unknown-site.com/game/123" })
     ).rejects.toThrow(/Unrecognised game URL/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adaptive depth
+// ---------------------------------------------------------------------------
+
+describe("handleAnalyzeGame — adaptive depth", () => {
+  it("uses criticalDepth for positions with large eval swings (> quietThreshold)", async () => {
+    // SHORT_PGN: 9 positions (0-indexed 0..8).
+    // Make position 4 swing 200cp from position 3 → positions 3 and 4 are critical.
+    let callCount = 0;
+    getEvalMock.mockImplementation(async (_fen: string, depth: number) => {
+      callCount++;
+      const cp = callCount === 4 ? -180 : 20;
+      return [{ depth, score_cp: cp, score_mate: null, pv: ["e2e4"], multipv_rank: 1 }];
+    });
+
+    await handleAnalyzeGame({ pgn: SHORT_PGN });
+
+    // getEval should have been called for the second pass (critical depth = 16)
+    const criticalCalls = getEvalMock.mock.calls.filter(
+      ([, depth]) => depth === 16
+    );
+    expect(criticalCalls.length).toBeGreaterThan(0);
+  });
+
+  it("does NOT use criticalDepth when all evals are stable (no swing > quietThreshold)", async () => {
+    getEvalMock.mockResolvedValue([makeEvalLine(20)]);
+
+    await handleAnalyzeGame({ pgn: SHORT_PGN });
+
+    const criticalCalls = getEvalMock.mock.calls.filter(
+      ([, depth]) => depth === 16
+    );
+    expect(criticalCalls.length).toBe(0);
   });
 });
 

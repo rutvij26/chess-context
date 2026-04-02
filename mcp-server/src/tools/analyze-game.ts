@@ -228,7 +228,12 @@ async function runAnalysis(input: AnalyzeGameInput, onProgress?: ProgressCallbac
   // Evaluate all positions concurrently via the engine router.
   // Docker Stockfish handles many positions in parallel (HTTP queue); WASM pool
   // is used as fallback. Cache hits are served instantly.
-  const quietDepth = config.stockfish.quietDepth;
+  //
+  // Two-pass adaptive depth:
+  //   Pass 1: all positions at quietDepth (fast).
+  //   Pass 2: re-evaluate positions whose eval swings > quietThreshold at
+  //           criticalDepth for higher accuracy.
+  const { quietDepth, criticalDepth } = config.stockfish;
   const total = positions.length;
 
   // Emit 0/N before the loop so the client knows the total upfront.
@@ -248,6 +253,40 @@ async function runAnalysis(input: AnalyzeGameInput, onProgress?: ProgressCallbac
         }),
     ),
   );
+
+  // Identify critical positions: those where the eval delta between adjacent
+  // positions exceeds the quiet threshold, then re-evaluate at critical depth.
+  const quietThreshold = config.analysis.quietThreshold;
+  const criticalIndices: number[] = [];
+  for (let i = 1; i < allLines.length; i++) {
+    const prevEval = allLines[i - 1]?.[0];
+    const curEval = allLines[i]?.[0];
+    if (!prevEval || !curEval) continue;
+    const prevCp = prevEval.score_mate !== null
+      ? (prevEval.score_mate > 0 ? 10000 : -10000)
+      : (prevEval.score_cp ?? 0);
+    const curCp = curEval.score_mate !== null
+      ? (curEval.score_mate > 0 ? 10000 : -10000)
+      : (curEval.score_cp ?? 0);
+    if (Math.abs(curCp - prevCp) > quietThreshold) {
+      criticalIndices.push(i - 1);
+      criticalIndices.push(i);
+    }
+  }
+  const uniqueCriticalIndices = [...new Set(criticalIndices)];
+
+  if (uniqueCriticalIndices.length > 0) {
+    await Promise.all(
+      uniqueCriticalIndices.map(async (idx) => {
+        const pos = positions[idx];
+        if (!pos) return;
+        const lines = await getEval(pos.fen, criticalDepth, 1).catch((): UCIAnalysisLine[] => []);
+        if (lines.length > 0) {
+          allLines[idx] = lines;
+        }
+      }),
+    );
+  }
 
   const evals: number[] = allLines.map((lines) => {
     const line = lines[0];
