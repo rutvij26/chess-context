@@ -52,15 +52,16 @@ function replayOpening(
 
     if (moveNumber > maxMoveNumber) break;
 
-    // Record positions where it is the player's turn (before they move)
+    // Record positions where it is the player's turn (before they move).
+    // Skip move 1 — the starting position is not a meaningful gap.
     const turnColor = chess.turn() === "w" ? "white" : "black";
-    if (turnColor === playerColor) {
-      // Next move after this position is the player's move; the opponent's
-      // response (opponentMoveSan) is two half-moves ahead.
-      const opponentHalfMoveIdx = i + 1; // index of opponent's move in history
+    if (turnColor === playerColor && moveNumber >= 2) {
+      // The opponent's response is two half-moves ahead (player moves at i,
+      // opponent responds at i+1).
+      const opponentHalfMoveIdx = i + 1;
       const opponentMoveSan =
         opponentHalfMoveIdx < history.length
-          ? (history[opponentHalfMoveIdx]!.san)
+          ? history[opponentHalfMoveIdx]!.san
           : null;
 
       positions.push({
@@ -146,8 +147,10 @@ export function detectOpeningGaps(
       ? Math.round((deviationEntries.length / totalWithMove) * 100)
       : 0;
 
-    // Only flag as a gap if opponent deviates significantly
-    if (deviationRate < 25 || deviationEntries.length < 2) continue;
+    // Only flag as a gap if opponent deviates significantly.
+    // Require at least 1 deviation entry (avoids divide-by-zero noise);
+    // the deviationRate threshold already filters out low-signal positions.
+    if (deviationRate < 25 || deviationEntries.length === 0) continue;
 
     const calcWinRate = (arr: PositionEntry[]) =>
       arr.length === 0
