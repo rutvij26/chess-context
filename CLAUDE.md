@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 ## Status
-v0.6.0 — 8 tools live. PostgreSQL game store added; `refresh_games`, `review_game`, `get_mistake_patterns`, `get_style_fingerprint` implemented.
-Next: v0.7 (10 tools).
+v0.7.0 — 12 tools live. Opening & training tools added: `get_opening_theory`, `find_opening_gaps`, `generate_puzzles`.
+Next: v0.8 (endgame analysis, tilt detection).
 
 ## Commands
 ```bash

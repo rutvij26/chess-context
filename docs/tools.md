@@ -738,4 +738,151 @@ Here is the full data flow for an `analyze_game` call:
    - Receives enriched JSON
    - Generates natural language analysis
    - Does NOT call any engine or API
+
+---
+
+## `get_opening_theory`
+
+Fetch theory for any opening position. Powered by the Lichess Opening Explorer (master-level games database). Works with a FEN or an opening name.
+
+### Input
+
+```typescript
+{
+  fen?: string            // FEN of position (optional)
+  opening_name?: string   // e.g. "Sicilian Defense", "Ruy Lopez" (optional)
+  player_level?: "beginner" | "club" | "advanced"  // default: "club"
+}
+```
+
+At least one of `fen` or `opening_name` is required.
+
+### Output
+
+```json
+{
+  "opening_name": "Sicilian Defense",
+  "eco": "B20",
+  "key_ideas": [
+    "Asymmetrical pawn structure gives Black dynamic counterplay",
+    "Black's c5 controls d4 and prepares queenside expansion",
+    "White typically opens with f4 or g4-g5 for kingside attack",
+    "Key plans: Black's minority attack vs White's kingside pawn storm",
+    "Anti-Sicilian systems sidestep main lines"
+  ],
+  "main_continuations": [
+    { "moves": "Nc3", "description": "Nc3 — white 1200, draws 700, black 1100 (avg rating: 2400)" },
+    { "moves": "Nf3", "description": "Nf3 — white 1100, draws 600, black 1000 (avg rating: 2450)" }
+  ],
+  "win_stats": { "white_wins": 40, "draws": 20, "black_wins": 40 },
+  "historical_context": "The Sicilian Defense has been the most popular response to 1.e4 since the 1970s...",
+  "narrative": "The Sicilian Defense is a solid choice for club players. In master-level games, White scores 40%...",
+  "lichess_explorer_url": "https://lichess.org/analysis/rnbqkbnr..."
+}
+```
+
+### Example prompts
+
+- "What are the key ideas in the Sicilian Defense for a club player?"
+- "Explain this opening position to me as a beginner" (with FEN)
+- "What should I know about the Ruy Lopez?"
+
+---
+
+## `find_opening_gaps`
+
+Scan a player's recent games to find repertoire blind spots — positions reached repeatedly where opponents deviate and the player scores poorly. No engine or database required.
+
+### Input
+
+```typescript
+{
+  username: string
+  platform: "chess.com" | "lichess"
+  color: "white" | "black"
+  num_games?: number          // default: 50
+  min_occurrences?: number    // default: 3, min: 2
+}
+```
+
+### Output
+
+```json
+{
+  "username": "rootviz",
+  "platform": "lichess",
+  "color": "white",
+  "games_analyzed": 47,
+  "gaps": [
+    {
+      "fen": "rnbqkb1r/pp2pppp/2p2n2/3p4/2PP4/2N2N2/PP2PPPP/R1BQKB1R w KQkq - 0 5",
+      "move_number": 5,
+      "occurrences": 12,
+      "opponent_deviation_rate": 58,
+      "player_win_rate": 22,
+      "player_loss_rate": 67,
+      "most_common_deviation": "dxc4",
+      "study_suggestion": "Critical gap at move 5 for White. You lose 67% of games when the opponent goes off-book here. Opponents most often surprise you with dxc4. Study this position thoroughly — learn at least two reliable responses."
+    }
+  ],
+  "summary": "Analyzed 47 games as white for rootviz. Found 2 opening gaps..."
+}
+```
+
+### Example prompts
+
+- "Find my opening weaknesses as white on Lichess"
+- "Where do opponents surprise me in my repertoire?"
+- "Analyze opening gaps for notsobrillantmove on chess.com playing black, last 30 games"
+
+---
+
+## `generate_puzzles`
+
+Extract tactical puzzles from a player's own analyzed games. Finds positions where a blunder occurred and shows the winning continuation. Requires `refresh_games` to have been run first.
+
+### Input
+
+```typescript
+{
+  username: string
+  platform: "chess.com" | "lichess"
+  num_games?: number            // default: 20, max: 50
+  difficulty?: "easy" | "medium" | "hard" | "all"   // default: "all"
+  puzzle_type?: "tactical" | "positional" | "endgame" | "all"  // default: "all"
+}
+```
+
+### Output
+
+```json
+{
+  "username": "rootviz",
+  "puzzles": [
+    {
+      "id": "a3f7b2c1",
+      "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+      "color_to_move": "white",
+      "solution": ["Ng5", "d5", "Nxf7"],
+      "difficulty": "medium",
+      "eval_swing_cp": 320,
+      "theme": "fork",
+      "source_game_id": "abc123",
+      "source_move_number": 12
+    }
+  ],
+  "games_scanned": 20
+}
+```
+
+**Difficulty tiers:**
+- `easy`: Single best move or mate in 1
+- `medium`: 2–3 move forcing combination, eval swing >200cp
+- `hard`: 4+ move combination or quiet winning move
+
+### Example prompts
+
+- "Generate puzzles from my recent games"
+- "Give me easy tactical puzzles from my Lichess games"
+- "What tactical motifs have I been missing in my games?"
 ```
