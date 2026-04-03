@@ -135,6 +135,8 @@ Pure functions — no I/O, no side effects. Takes chess.js board state and engin
 - **`player-level.ts`** — `detectPlayerLevel(rating)` maps rating to `beginner` (<1000), `club` (1000–1800), or `advanced` (>1800). `buildStudyRecommendations()` generates 1–3 study suggestions from phase grades and error patterns. `filterMomentsForLevel()` controls how much engine detail is surfaced to the player.
 - **`pattern-scanner.ts`** — `detectMistakePatterns()` scans `MoveRecord[][]` and `CriticalMoment[][]` across multiple games. Detects 5 pattern types: time-pressure blunder clusters, opening preparation gaps, endgame technique failures, hanging pieces, and repeated opening collapses. All detectors return `null` when frequency is below threshold (≥2–3 occurrences).
 - **`style-analyzer.ts`** — `computeStyleFingerprint()` scores 5 dimensions: aggression (pawn advances + sacrifice events), positional_sense (strategic accuracy), tactical_sharpness (% of critical moves found), endgame_skill (win conversion rate with advantage), time_management (`[%clk]` annotations, Lichess only). `deriveStyleLabel()` maps scores to one of 6 archetypes. `buildStyleDescription()` generates a 2–3 sentence narrative.
+- **`opening-gap-detector.ts`** — `detectOpeningGaps(games, color, minOccurrences)` replays each game with chess.js up to move 15, groups positions by FEN, and identifies repeated positions where opponent deviations lead to poor results. Sorted by `loss_rate × occurrences`. No engine required.
+- **`puzzle-classifier.ts`** — `extractPuzzles(analyses, metas, difficulty, max)` reads stored `critical_moments` from DB, finds the FEN before each blunder, runs a shallow engine eval to get the forcing PV, converts UCI → SAN with chess.js, and classifies difficulty (easy/medium/hard based on PV length and eval swing). Puzzles are deduplicated by FEN hash.
 
 ---
 
@@ -150,6 +152,9 @@ Orchestrates Layers 1 and 2 into MCP tool handlers. Each tool is a single file w
 - **`review-game.ts`** — Calls `handleAnalyzeGame()` → detects player color and rating → `detectPlayerLevel()` → computes per-phase accuracy and letter grades → finds turning point (largest `eval_drop_cp`) → generates study recommendations and narrative.
 - **`get-mistake-patterns.ts`** — Queries `getAnalysesForUser()` → optional time_control filter → calls `detectMistakePatterns()` → returns ranked patterns with overall summary.
 - **`get-style-fingerprint.ts`** — Queries `getAnalysesForUser()` + `getGamesForUser()` → builds `GameDataForStyle[]` → calls `computeStyleFingerprint()` → returns fingerprint, style label, and description.
+- **`get-opening-theory.ts`** — Resolves FEN from name lookup or input → calls `getLichessOpeningExplorer()` → builds key ideas, continuations, win stats, and level-adapted narrative.
+- **`find-opening-gaps.ts`** — Fetches games from API → calls `detectOpeningGaps()` → returns sorted gap list with study suggestions. No DB or engine required.
+- **`generate-puzzles.ts`** — DB-backed: queries stored analyses → `waitUntilRouterReady()` → calls `extractPuzzles()` → applies puzzle_type filter → returns puzzles sorted easy→hard.
 
 ---
 
@@ -275,6 +280,8 @@ Every file in the project maps to exactly one layer. Use this as a navigation in
 | `intelligence/theme-tagger.ts` | `tagThemes(board, phase)` |
 | `intelligence/narrative-generator.ts` | `generateNarrative(phase, structures, themes, scoreCp, scoreMate)` |
 | `intelligence/critical-moments.ts` | `detectCriticalMoments()`, `computeAccuracy()`, `categoriseMistakesByPhase()` |
+| `intelligence/opening-gap-detector.ts` | `detectOpeningGaps(games, color, minOccurrences)` |
+| `intelligence/puzzle-classifier.ts` | `extractPuzzles(analyses, metas, difficulty, max)` |
 
 ### Layer 3 — Tools
 

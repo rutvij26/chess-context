@@ -13,6 +13,9 @@ import { handleReviewGame } from "./tools/review-game.js";
 import { handleGetMistakePatterns } from "./tools/get-mistake-patterns.js";
 import { handleGetStyleFingerprint } from "./tools/get-style-fingerprint.js";
 import { handleGetAnalysisProgress } from "./tools/get-analysis-progress.js";
+import { handleGetOpeningTheory } from "./tools/get-opening-theory.js";
+import { handleFindOpeningGaps } from "./tools/find-opening-gaps.js";
+import { handleGeneratePuzzles } from "./tools/generate-puzzles.js";
 import {
   AnalyzePositionInputSchema,
   AnalyzeGameInputSchema,
@@ -23,6 +26,9 @@ import {
   GetMistakePatternsInputSchema,
   GetStyleFingerprintInputSchema,
   GetAnalysisProgressInputSchema,
+  GetOpeningTheoryInputSchema,
+  FindOpeningGapsInputSchema,
+  GeneratePuzzlesInputSchema,
 } from "./types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -31,7 +37,7 @@ import {
 
 const server = new McpServer({
   name: "chess-context",
-  version: "0.6.0",
+  version: "0.7.0",
 });
 
 // ---------------------------------------------------------------------------
@@ -198,6 +204,55 @@ server.registerTool(
   },
   async (input) => {
     const result = await handleGetAnalysisProgress(input);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.registerTool(
+  "get_opening_theory",
+  {
+    title: "Get Opening Theory",
+    description:
+      "Fetch opening theory for any chess position. Provide a FEN string or an opening name (e.g. 'Sicilian Defense', 'Ruy Lopez'). Returns the opening name, ECO code, key strategic ideas, main continuations from Lichess master games, win statistics, historical context, and an explanation adapted to your level (beginner/club/advanced).",
+    inputSchema: GetOpeningTheoryInputSchema,
+  },
+  async (input) => {
+    const result = await handleGetOpeningTheory(input);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.registerTool(
+  "find_opening_gaps",
+  {
+    title: "Find Opening Gaps",
+    description:
+      "Detect repertoire blind spots by scanning a player's recent games. Identifies positions reached 3+ times where opponents deviate from the expected line and the player scores poorly. No engine required — works purely from game history. Returns gaps sorted by impact with study suggestions. Supports Chess.com and Lichess.",
+    inputSchema: FindOpeningGapsInputSchema,
+  },
+  async (input) => {
+    const result = await handleFindOpeningGaps(input);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.registerTool(
+  "generate_puzzles",
+  {
+    title: "Generate Puzzles",
+    description:
+      "Extract tactical puzzles from a player's own analyzed games. Finds positions where a blunder occurred and the engine shows a forcing continuation. Returns puzzles with FEN, solution (SAN sequence), difficulty tier (easy/medium/hard), eval swing, and tactical theme. " +
+      "Requires refresh_games to have been run first. Filter by difficulty or puzzle type (tactical/positional/endgame).",
+    inputSchema: GeneratePuzzlesInputSchema,
+  },
+  async (input) => {
+    const result = await handleGeneratePuzzles(input);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };

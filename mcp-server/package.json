@@ -1,6 +1,6 @@
 {
   "name": "mcp-chess",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "ChessContext MCP — semantic chess intelligence for Claude",
   "type": "module",
   "main": "dist/index.js",

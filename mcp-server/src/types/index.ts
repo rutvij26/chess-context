@@ -429,3 +429,129 @@ export interface GetAnalysisProgressOutput {
   status: "idle" | "processing" | "complete" | "no_games";
   summary: string;
 }
+
+// ---------------------------------------------------------------------------
+// v0.7 tool input/output types
+// ---------------------------------------------------------------------------
+
+// get_opening_theory
+export const GetOpeningTheoryInputSchema = z.object({
+  fen: z
+    .string()
+    .optional()
+    .describe("FEN string of the position (e.g. after a specific opening move)"),
+  opening_name: z
+    .string()
+    .optional()
+    .describe("Opening name to look up (e.g. 'Sicilian Defense', 'Ruy Lopez')"),
+  player_level: z
+    .enum(["beginner", "club", "advanced"])
+    .optional()
+    .describe("Adapts explanation depth. Default: club"),
+});
+export type GetOpeningTheoryInput = z.infer<typeof GetOpeningTheoryInputSchema>;
+
+export interface OpeningContinuation {
+  moves: string;       // SAN move string e.g. "2. Nf3 Nc6 3. Bb5"
+  description: string; // what this line aims for
+}
+
+export interface GetOpeningTheoryOutput {
+  opening_name: string;
+  eco: string | null;
+  key_ideas: string[];                     // 3-5 bullets
+  main_continuations: OpeningContinuation[];
+  win_stats: {
+    white_wins: number;  // percentage
+    draws: number;
+    black_wins: number;
+  };
+  historical_context: string;
+  narrative: string;                       // adapted by player_level
+  lichess_explorer_url: string;
+  note?: string;
+}
+
+// find_opening_gaps
+export const FindOpeningGapsInputSchema = z.object({
+  username: z.string().describe("Player username on the platform"),
+  platform: z.enum(["chess.com", "lichess"]),
+  color: z.enum(["white", "black"]).describe("Which color to analyze"),
+  num_games: z
+    .number()
+    .int()
+    .min(5)
+    .max(100)
+    .optional()
+    .describe("Number of recent games to scan (default: 50)"),
+  min_occurrences: z
+    .number()
+    .int()
+    .min(2)
+    .max(20)
+    .optional()
+    .describe("Minimum times a position must appear to qualify (default: 3)"),
+});
+export type FindOpeningGapsInput = z.infer<typeof FindOpeningGapsInputSchema>;
+
+export interface OpeningGap {
+  fen: string;
+  move_number: number;
+  occurrences: number;
+  opponent_deviation_rate: number;   // 0-100 percentage
+  player_win_rate: number;           // when opponent deviates
+  player_loss_rate: number;          // when opponent deviates
+  most_common_deviation: string | null; // opponent's most frequent surprise move (SAN)
+  study_suggestion: string;
+}
+
+export interface FindOpeningGapsOutput {
+  username: string;
+  platform: string;
+  color: string;
+  games_analyzed: number;
+  gaps: OpeningGap[];
+  summary: string;
+  note?: string;
+}
+
+// generate_puzzles
+export const GeneratePuzzlesInputSchema = z.object({
+  username: z.string().describe("Player username on the platform"),
+  platform: z.enum(["chess.com", "lichess"]),
+  num_games: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe("Number of recent analyzed games to scan for puzzles (default: 20)"),
+  difficulty: z
+    .enum(["easy", "medium", "hard", "all"])
+    .optional()
+    .describe("Filter puzzles by difficulty tier (default: all)"),
+  puzzle_type: z
+    .enum(["tactical", "positional", "endgame", "all"])
+    .optional()
+    .describe("Filter by puzzle type (default: all)"),
+});
+export type GeneratePuzzlesInput = z.infer<typeof GeneratePuzzlesInputSchema>;
+
+export interface ChessPuzzle {
+  id: string;                          // deterministic 8-char hex from FEN hash
+  fen: string;                         // position to solve
+  color_to_move: "white" | "black";
+  solution: string[];                  // SAN move sequence
+  difficulty: "easy" | "medium" | "hard";
+  eval_swing_cp: number;
+  theme: string;                       // e.g. "fork", "pin", "back_rank_weakness"
+  source_game_id: string | null;
+  source_move_number: number;
+}
+
+export interface GeneratePuzzlesOutput {
+  username: string;
+  puzzles: ChessPuzzle[];
+  games_scanned: number;
+  note?: string;
+}

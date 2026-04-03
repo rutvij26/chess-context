@@ -318,6 +318,49 @@ function computeWinRates(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Lichess Opening Explorer
+// ---------------------------------------------------------------------------
+
+export interface LichessExplorerMove {
+  uci: string;
+  san: string;
+  white: number;
+  draws: number;
+  black: number;
+  averageRating?: number;
+}
+
+export interface LichessExplorerResponse {
+  opening: { eco: string; name: string } | null;
+  white: number;
+  draws: number;
+  black: number;
+  moves: LichessExplorerMove[];
+}
+
+export async function getLichessOpeningExplorer(
+  fen: string
+): Promise<LichessExplorerResponse> {
+  try {
+    const { data } = await axios.get<LichessExplorerResponse>(
+      "https://explorer.lichess.ovh/lichess",
+      {
+        params: { fen, recentGames: 0, topGames: 0 },
+        headers: { Accept: "application/json" },
+      }
+    );
+    return data;
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      throw new Error(
+        `Lichess Opening Explorer error: ${err.response?.status ?? "unknown"}`
+      );
+    }
+    throw err;
+  }
+}
+
 export async function buildPlayerStats(username: string): Promise<PlayerStats> {
   const [profile, games] = await Promise.all([
     getProfile(username),
