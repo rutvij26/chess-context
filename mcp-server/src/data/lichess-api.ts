@@ -342,23 +342,44 @@ export interface LichessExplorerResponse {
 export async function getLichessOpeningExplorer(
   fen: string
 ): Promise<LichessExplorerResponse> {
-  try {
-    const { data } = await axios.get<LichessExplorerResponse>(
-      "https://explorer.lichess.ovh/lichess",
-      {
-        params: { fen, recentGames: 0, topGames: 0 },
-        headers: { Accept: "application/json" },
+  const params = { fen, recentGames: 0, topGames: 0 };
+  const authHeaders = config.lichess.token
+    ? { Authorization: `Bearer ${config.lichess.token}` }
+    : {};
+
+  // Try authenticated Lichess database first; fall back to public masters DB.
+  const endpoints = [
+    "https://explorer.lichess.ovh/lichess",
+    "https://explorer.lichess.ovh/masters",
+  ] as const;
+
+  let lastErr: unknown;
+  for (const url of endpoints) {
+    try {
+      const { data } = await axios.get<LichessExplorerResponse>(url, {
+        params,
+        headers: { Accept: "application/json", ...authHeaders },
+      });
+      return data;
+    } catch (err) {
+      lastErr = err;
+      // Only retry on 401/403 — other errors are not endpoint-specific
+      if (
+        axios.isAxiosError(err) &&
+        err.response?.status !== 401 &&
+        err.response?.status !== 403
+      ) {
+        break;
       }
-    );
-    return data;
-  } catch (err) {
-    if (axios.isAxiosError(err)) {
-      throw new Error(
-        `Lichess Opening Explorer error: ${err.response?.status ?? "unknown"}`
-      );
     }
-    throw err;
   }
+
+  if (axios.isAxiosError(lastErr)) {
+    throw new Error(
+      `Lichess Opening Explorer error: ${(lastErr as import("axios").AxiosError).response?.status ?? "unknown"}`
+    );
+  }
+  throw lastErr;
 }
 
 export async function buildPlayerStats(username: string): Promise<PlayerStats> {

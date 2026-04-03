@@ -58,7 +58,7 @@ export async function handleGeneratePuzzles(
 
   const difficulty = input.difficulty ?? "all";
 
-  const puzzles = await extractPuzzles(
+  const rawPuzzles = await extractPuzzles(
     analyses,
     gameMetas,
     difficulty,
@@ -69,8 +69,8 @@ export async function handleGeneratePuzzles(
   const puzzleType = input.puzzle_type ?? "all";
   const filtered =
     puzzleType === "all"
-      ? puzzles
-      : puzzles.filter((p) => {
+      ? rawPuzzles
+      : rawPuzzles.filter((p) => {
           if (puzzleType === "tactical") {
             return ["checkmate", "fork", "pin", "back_rank_weakness", "tactical_combination"].includes(p.theme);
           }
@@ -83,10 +83,18 @@ export async function handleGeneratePuzzles(
           return true;
         });
 
-  const note =
-    filtered.length === 0
-      ? `No puzzles matched your filters (difficulty: ${difficulty}, type: ${puzzleType}). Try broadening your search.`
-      : undefined;
+  // Produce a precise note depending on WHY no puzzles were returned.
+  let note: string | undefined;
+  if (rawPuzzles.length === 0) {
+    note =
+      `No blunders with a forcing engine continuation found in ${analyses.length} analyzed game(s). ` +
+      `Analysis may still be running — check get_analysis_progress. ` +
+      `If analysis is complete, the games may not contain clear tactical blunders (eval drop ≥ 150cp).`;
+  } else if (filtered.length === 0) {
+    note =
+      `Found ${rawPuzzles.length} puzzle(s) in your games but none matched ` +
+      `difficulty="${difficulty}" / type="${puzzleType}". Try broadening your filters.`;
+  }
 
   return {
     username: input.username,
