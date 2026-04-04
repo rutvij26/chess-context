@@ -182,8 +182,8 @@ function scoreEndgameSkill(games: GameDataForStyle[]): number {
     if (!hadAdvantage) continue;
 
     winningEndgames++;
-    const colorWin = isWhite ? "1-0" : "0-1";
-    if (result === colorWin) convertedWins++;
+    // result is stored as "win"/"loss"/"draw" from the player's perspective
+    if (result === "win") convertedWins++;
   }
 
   if (winningEndgames === 0) return 55; // not enough data

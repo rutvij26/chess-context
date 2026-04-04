@@ -84,10 +84,21 @@ export async function handleGetMistakePatterns(
     (m) => m.color === color && m.category === "mistake"
   ).length;
 
-  const summary =
-    patterns.length === 0
-      ? `Analyzed ${filteredAnalyses.length} games. No recurring patterns detected — your mistakes appear varied rather than systematic. Keep playing and run again after more games.`
-      : `Analyzed ${filteredAnalyses.length} games: ${totalBlunders} blunder${totalBlunders !== 1 ? "s" : ""} and ${totalMistakes} mistake${totalMistakes !== 1 ? "s" : ""} detected. Found ${patterns.length} recurring pattern${patterns.length !== 1 ? "s" : ""} — the top priority is "${patterns[0]!.pattern_type.replace(/_/g, " ")}".`;
+  // Detect low-coverage analyses (engine wasn't available when analysis ran).
+  const lowCoverageCount = filteredAnalyses.filter(
+    (a) => (a.white_accuracy === null || a.white_accuracy === 0) &&
+            (a.black_accuracy === null || a.black_accuracy === 0)
+  ).length;
+  const allLowCoverage = lowCoverageCount === filteredAnalyses.length;
+
+  let summary: string;
+  if (allLowCoverage) {
+    summary = `All ${filteredAnalyses.length} analyzed game(s) have zero accuracy scores — the engine was not available when analysis ran. Wait 30–60s after server start and run refresh_games again for pattern detection to work.`;
+  } else if (patterns.length === 0) {
+    summary = `Analyzed ${filteredAnalyses.length} games. No recurring patterns detected — your mistakes appear varied rather than systematic. Keep playing and run again after more games.`;
+  } else {
+    summary = `Analyzed ${filteredAnalyses.length} games: ${totalBlunders} blunder${totalBlunders !== 1 ? "s" : ""} and ${totalMistakes} mistake${totalMistakes !== 1 ? "s" : ""} detected. Found ${patterns.length} recurring pattern${patterns.length !== 1 ? "s" : ""} — the top priority is "${patterns[0]!.pattern_type.replace(/_/g, " ")}".`;
+  }
 
   return {
     username: input.username,

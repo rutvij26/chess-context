@@ -156,9 +156,8 @@ function detectEndgameTechniqueIssue(
 
     if (!hadAdvantage) continue;
 
-    // But result was not a win
-    const colorWin = color === "white" ? "1-0" : "0-1";
-    const didNotWin = meta.result !== colorWin;
+    // But result was not a win (result is stored as "win"/"loss"/"draw")
+    const didNotWin = meta.result !== "win";
 
     if (didNotWin) {
       gamesWithPattern++;
@@ -242,13 +241,16 @@ function detectRepeatedOpeningCollapse(
     const eco = meta?.opening_eco;
     if (!eco) continue;
 
-    // Opening collapsed: eval below -100cp for target color by move 15
+    // Opening collapsed: eval below -100cp for target color by move 15.
+    // eval_after_cp is always from white's perspective:
+    //   white disadvantage → eval_after_cp < -100
+    //   black disadvantage → eval_after_cp > +100 (white is winning)
     const earlyDisadvantage = moments.some(
       (m) =>
         m.color === color &&
         m.move_number <= 15 &&
         (m.category === "blunder" || m.category === "mistake") &&
-        m.eval_after_cp < -100 * (color === "white" ? 1 : -1)
+        m.eval_after_cp * (color === "white" ? 1 : -1) < -100
     );
 
     if (earlyDisadvantage) {

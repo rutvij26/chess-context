@@ -33,6 +33,20 @@ export async function handleGeneratePuzzles(
     };
   }
 
+  // Detect low-coverage analyses (engine wasn't available when analysis ran).
+  const lowCoverageCount = analyses.filter(
+    (a) => (a.white_accuracy === null || a.white_accuracy === 0) &&
+            (a.black_accuracy === null || a.black_accuracy === 0)
+  ).length;
+  if (lowCoverageCount === analyses.length) {
+    return {
+      username: input.username,
+      puzzles: [],
+      games_scanned: analyses.length,
+      note: `All ${analyses.length} analyzed game(s) have zero accuracy scores — the engine was not available when analysis ran. Wait 30–60s after server start and run refresh_games again for puzzles to be generated.`,
+    };
+  }
+
   // Build GameMeta from player_games table, keyed by player_game_id
   const gameMap = new Map(games.map((g) => [g.id, g]));
 

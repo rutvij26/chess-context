@@ -48,7 +48,7 @@ function makeMeta(overrides: Partial<GameMeta> = {}): GameMeta {
     opening_eco: "B20",
     opening_name: "Sicilian",
     player_color: "white",
-    result: "1-0",
+    result: "win",
     ...overrides,
   };
 }
@@ -140,8 +140,8 @@ describe("detectMistakePatterns — endgame_technique", () => {
       [makeRecord({ moveNumber: 32, color: "white", evalBefore: 300, evalAfter: 200 })],
     ];
     const metas = [
-      makeMeta({ result: "1/2-1/2" }), // had advantage but drew
-      makeMeta({ result: "0-1" }),       // had advantage but lost
+      makeMeta({ result: "draw" }), // had advantage but drew
+      makeMeta({ result: "loss" }),  // had advantage but lost
     ];
     const patterns = detectMistakePatterns(records, [[], []], metas, "white");
     const p = patterns.find((x) => x.pattern_type === "endgame_technique");
@@ -155,8 +155,8 @@ describe("detectMistakePatterns — endgame_technique", () => {
       [makeRecord({ moveNumber: 32, color: "white", evalBefore: 300, evalAfter: 250 })],
     ];
     const metas = [
-      makeMeta({ result: "1-0" }),
-      makeMeta({ result: "1-0" }),
+      makeMeta({ result: "win" }),
+      makeMeta({ result: "win" }),
     ];
     const patterns = detectMistakePatterns(records, [[], []], metas, "white");
     const p = patterns.find((x) => x.pattern_type === "endgame_technique");
@@ -167,7 +167,7 @@ describe("detectMistakePatterns — endgame_technique", () => {
     const records = [
       [makeRecord({ moveNumber: 35, color: "white", evalBefore: 200, evalAfter: 150 })],
     ];
-    const metas = [makeMeta({ result: "0-1" })];
+    const metas = [makeMeta({ result: "loss" })];
     const patterns = detectMistakePatterns(records, [[]], metas, "white");
     const p = patterns.find((x) => x.pattern_type === "endgame_technique");
     expect(p).toBeUndefined();
@@ -258,7 +258,7 @@ describe("detectMistakePatterns — sorting", () => {
       makeMoment({ move_number: 8, color: "white", category: "mistake", eval_after_cp: -150 }),
       makeMoment({ move_number: 20, color: "white", category: "blunder", eval_drop_cp: 400 }),
     ]);
-    const metas = Array(3).fill(makeMeta({ opening_eco: "B20", result: "0-1" }));
+    const metas = Array(3).fill(makeMeta({ opening_eco: "B20", result: "loss" }));
     const patterns = detectMistakePatterns(records3, moments, metas, "white");
     for (let i = 1; i < patterns.length; i++) {
       expect(patterns[i - 1]!.frequency).toBeGreaterThanOrEqual(patterns[i]!.frequency);
