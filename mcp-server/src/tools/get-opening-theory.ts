@@ -31,6 +31,60 @@ const OPENING_FEN_MAP: Record<string, string> = {
   "starting position": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
 };
 
+// ---------------------------------------------------------------------------
+// FEN → opening name + ECO (local fallback when Lichess Explorer is unavailable)
+// Keyed on "piece_placement active_color" (first two FEN fields) so en passant
+// square, castling rights, and move counters don't prevent a match.
+// ---------------------------------------------------------------------------
+
+interface LocalOpening { name: string; eco: string }
+
+const FEN_ECO_MAP: Record<string, LocalOpening> = {
+  // After 1.e4
+  "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b": { name: "King's Pawn Opening", eco: "B00" },
+  // After 1.e4 c5
+  "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w": { name: "Sicilian Defense", eco: "B20" },
+  // After 1.e4 e5
+  "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w": { name: "Open Game", eco: "C20" },
+  // After 1.e4 e6
+  "rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR w": { name: "French Defense", eco: "C00" },
+  // After 1.e4 c6
+  "rnbqkbnr/pp1ppppp/2p5/8/4P3/8/PPPP1PPP/RNBQKBNR w": { name: "Caro-Kann Defense", eco: "B10" },
+  // After 1.e4 d5
+  "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w": { name: "Scandinavian Defense", eco: "B01" },
+  // After 1.e4 d6
+  "rnbqkbnr/ppp1pppp/3p4/8/4P3/8/PPPP1PPP/RNBQKBNR w": { name: "Pirc Defense", eco: "B07" },
+  // After 1.e4 e5 2.Nf3 Nc6 3.Bb5
+  "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b": { name: "Ruy Lopez", eco: "C60" },
+  // After 1.e4 e5 2.Nf3 Nc6 3.Bc4
+  "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b": { name: "Italian Game", eco: "C50" },
+  // After 1.d4
+  "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b": { name: "Queen's Pawn Opening", eco: "D00" },
+  // After 1.d4 d5 2.c4
+  "rnbqkbnr/ppp1pppp/8/3p4/2PP4/8/PP2PPPP/RNBQKBNR b": { name: "Queen's Gambit", eco: "D06" },
+  // After 1.d4 Nf6 2.c4 g6
+  "rnbqkb1r/pppppp1p/5np1/8/2PP4/8/PP2PPPP/RNBQKBNR w": { name: "King's Indian Defense", eco: "E60" },
+  // After 1.d4 Nf6 2.c4 e6 3.Nc3 Bb4
+  "rnbqk2r/pppp1ppp/4pn2/8/1bPP4/2N5/PP2PPPP/R1BQKBNR w": { name: "Nimzo-Indian Defense", eco: "E20" },
+  // After 1.d4 d5
+  "rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w": { name: "Closed Game", eco: "D00" },
+  // After 1.c4
+  "rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b": { name: "English Opening", eco: "A10" },
+  // After 1.Nf3
+  "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b": { name: "Réti Opening", eco: "A04" },
+};
+
+/** Reduce a full FEN to "piece_placement active_color" for map lookup. */
+function normalizeFen(fen: string): string {
+  const parts = fen.trim().split(/\s+/);
+  return `${parts[0] ?? ""} ${parts[1] ?? ""}`;
+}
+
+/** Reverse lookup: FEN → local opening info (name + ECO). */
+function lookupOpeningByFen(fen: string): LocalOpening | null {
+  return FEN_ECO_MAP[normalizeFen(fen)] ?? null;
+}
+
 function lookupFen(openingName: string): string | null {
   const normalized = openingName.toLowerCase().replace(/['']/g, "");
   for (const [key, fen] of Object.entries(OPENING_FEN_MAP)) {
@@ -215,29 +269,37 @@ export async function handleGetOpeningTheory(
     fen = lookupFen(input.opening_name) ?? "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
   }
 
+  // Resolve opening name + ECO from local map before the API call so the
+  // fallback path can still return complete data if the Explorer is down.
+  const localOpening = fen ? lookupOpeningByFen(fen) : null;
+
   let explorerData;
   try {
     explorerData = await getLichessOpeningExplorer(fen!);
   } catch (err) {
-    const opening = input.opening_name ?? "this position";
+    const opening =
+      localOpening?.name ?? input.opening_name ?? "Unknown Opening";
+    const eco = localOpening?.eco ?? null;
+    const emptyStats = { white_wins: 0, draws: 0, black_wins: 0 };
     return {
       opening_name: opening,
-      eco: null,
+      eco,
       key_ideas: buildKeyIdeas(opening, playerLevel),
       main_continuations: [],
-      win_stats: { white_wins: 0, draws: 0, black_wins: 0 },
+      win_stats: emptyStats,
       historical_context: buildHistoricalContext(opening),
-      narrative: "",
+      narrative: buildNarrative(opening, emptyStats, playerLevel, []),
       lichess_explorer_url: `https://lichess.org/analysis/${encodeURIComponent(fen!)}`,
-      note: `Could not reach Lichess Opening Explorer: ${err instanceof Error ? err.message : String(err)}`,
+      note: `Lichess Opening Explorer unavailable (${err instanceof Error ? err.message : String(err)}). Showing local opening data only — win statistics and main continuations require a live connection.`,
     };
   }
 
   const openingName =
     explorerData.opening?.name ??
+    localOpening?.name ??
     input.opening_name ??
     "Unknown Opening";
-  const eco = explorerData.opening?.eco ?? null;
+  const eco = explorerData.opening?.eco ?? localOpening?.eco ?? null;
 
   // Build win stats (percentages)
   const total = explorerData.white + explorerData.draws + explorerData.black;
