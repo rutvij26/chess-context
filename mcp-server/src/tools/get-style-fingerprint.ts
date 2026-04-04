@@ -89,10 +89,20 @@ export async function handleGetStyleFingerprint(
   const styleLabel = deriveStyleLabel(fingerprint);
   const description = buildStyleDescription(fingerprint, styleLabel);
 
-  const note =
-    !isLichess && fingerprint.time_management === null
-      ? "time_management is not available for Chess.com games (no clock data in PGN)."
-      : undefined;
+  // Detect low-coverage analyses: white_accuracy=0 AND black_accuracy=0 means
+  // the engine wasn't available when the game was analyzed (all evals were zero).
+  const lowCoverageCount = analyses.filter(
+    (a) => (a.white_accuracy === null || a.white_accuracy === 0) &&
+            (a.black_accuracy === null || a.black_accuracy === 0)
+  ).length;
+  const allLowCoverage = lowCoverageCount === analyses.length && analyses.length > 0;
+
+  let note: string | undefined;
+  if (allLowCoverage) {
+    note = `All ${analyses.length} analyzed game(s) have zero accuracy scores, indicating the engine was not available when analysis ran. Wait 30–60s after server start and run refresh_games again for accurate style scores.`;
+  } else if (!isLichess && fingerprint.time_management === null) {
+    note = "time_management is not available for Chess.com games (no clock data in PGN).";
+  }
 
   return {
     username: input.username,

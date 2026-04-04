@@ -183,7 +183,7 @@ describe("computeStyleFingerprint", () => {
         criticalMoments: [],
         pgn: SIMPLE_PGN,
         playerColor: "white",
-        result: "1-0",
+        result: "win",
       },
     ];
     const fp = computeStyleFingerprint(gameData, [SIMPLE_PGN], ["600+0"], false);
@@ -203,7 +203,7 @@ describe("computeStyleFingerprint", () => {
         criticalMoments: moments,
         pgn: SIMPLE_PGN,
         playerColor: "white",
-        result: "1-0",
+        result: "win",
       },
     ];
     const fp = computeStyleFingerprint(gameData, [SIMPLE_PGN], ["600+0"], false);
@@ -221,7 +221,7 @@ describe("computeStyleFingerprint", () => {
         criticalMoments: [],
         pgn: SIMPLE_PGN,
         playerColor: "white",
-        result: "1-0", // had advantage and won
+        result: "win", // had advantage and won
       },
     ];
     const fp = computeStyleFingerprint(gameData, [SIMPLE_PGN], ["600+0"], false);
@@ -238,7 +238,7 @@ describe("computeStyleFingerprint", () => {
         criticalMoments: [],
         pgn: SIMPLE_PGN,
         playerColor: "white",
-        result: "0-1", // had advantage but lost
+        result: "loss", // had advantage but lost
       },
     ];
     const fp = computeStyleFingerprint(gameData, [SIMPLE_PGN], ["600+0"], false);
@@ -252,7 +252,7 @@ describe("computeStyleFingerprint", () => {
         criticalMoments: [makeMoment({ move_number: 15, color: "white", category: "blunder", eval_drop_cp: 250 })],
         pgn: SIMPLE_PGN,
         playerColor: "white",
-        result: "1-0",
+        result: "win",
       },
     ];
     const fp = computeStyleFingerprint(gameData, [SIMPLE_PGN], ["600+0"], false);
