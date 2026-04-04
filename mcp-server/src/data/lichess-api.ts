@@ -342,32 +342,32 @@ export interface LichessExplorerResponse {
 export async function getLichessOpeningExplorer(
   fen: string
 ): Promise<LichessExplorerResponse> {
-  const params = { fen, recentGames: 0, topGames: 0 };
-  const authHeaders = config.lichess.token
-    ? { Authorization: `Bearer ${config.lichess.token}` }
-    : {};
-
-  // Try authenticated Lichess database first; fall back to public masters DB.
-  const endpoints = [
-    "https://explorer.lichess.ovh/lichess",
-    "https://explorer.lichess.ovh/masters",
-  ] as const;
+  // Try authenticated Lichess DB first (more games), then fall back to public
+  // masters DB. Auth header is only sent to the lichess endpoint — the masters
+  // endpoint is public and rejects Authorization headers with 401.
+  const endpoints: Array<{ url: string; sendAuth: boolean }> = [
+    { url: "https://explorer.lichess.ovh/lichess", sendAuth: true },
+    { url: "https://explorer.lichess.ovh/masters", sendAuth: false },
+  ];
 
   let lastErr: unknown;
-  for (const url of endpoints) {
+  for (const { url, sendAuth } of endpoints) {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (sendAuth && config.lichess.token) {
+      headers["Authorization"] = `Bearer ${config.lichess.token}`;
+    }
     try {
       const { data } = await axios.get<LichessExplorerResponse>(url, {
-        params,
-        headers: { Accept: "application/json", ...authHeaders },
+        params: { fen, recentGames: 0, topGames: 0 },
+        headers,
       });
       return data;
     } catch (err) {
       lastErr = err;
-      // Only retry on 401/403 — other errors are not endpoint-specific
+      // Only try the next endpoint on auth failures — other errors are final.
       if (
-        axios.isAxiosError(err) &&
-        err.response?.status !== 401 &&
-        err.response?.status !== 403
+        !axios.isAxiosError(err) ||
+        (err.response?.status !== 401 && err.response?.status !== 403)
       ) {
         break;
       }
