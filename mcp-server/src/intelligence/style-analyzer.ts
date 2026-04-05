@@ -67,7 +67,7 @@ function scoreAggression(games: GameDataForStyle[]): number {
         (playerColor === "black" && m.color === "b")
     ).length;
     if (totalMoves > 0) {
-      scores.push(Math.min(100, (aggressionPoints / totalMoves) * 20));
+      scores.push(Math.min(100, (aggressionPoints / totalMoves) * 200));
     }
   }
 
@@ -145,7 +145,9 @@ function scoreTacticalSharpness(games: GameDataForStyle[]): number {
          m.category === "blunder" || m.category === "missed_win")
     );
 
-    const found = opportunities.filter((m) => m.eval_drop_cp < 30);
+    // "found" = not a blunder (< 200cp drop). The pipeline only stores moves
+    // with eval_drop >= 50 (inaccuracy threshold), so < 30 never matches anything.
+    const found = opportunities.filter((m) => m.eval_drop_cp < 200);
 
     totalOpportunities += opportunities.length;
     foundOpportunities += found.length;
@@ -254,11 +256,17 @@ export function scoreTimeManagement(
 export function deriveStyleLabel(fp: StyleFingerprint): string {
   const { aggression, positional_sense, tactical_sharpness } = fp;
 
+  // High aggression
   if (aggression >= 70 && tactical_sharpness >= 70) return "Aggressive Tactician";
   if (aggression >= 70 && positional_sense >= 70) return "Dynamic Imbalance Seeker";
   if (aggression >= 70) return "Sharp Gambiteer";
-  if (positional_sense >= 70 && aggression < 40) return "Solid Positional Player";
+
+  // Low aggression — differentiate by tactical + positional
+  if (aggression < 40 && positional_sense >= 70 && tactical_sharpness >= 60) return "Solid Positional Player";
+  if (aggression < 40 && tactical_sharpness >= 60) return "Tactical Fighter";
+  if (aggression < 40 && positional_sense >= 70) return "Cautious Strategist";
   if (aggression < 40 && tactical_sharpness < 40) return "Reactive Defender";
+
   return "Balanced All-Rounder";
 }
 

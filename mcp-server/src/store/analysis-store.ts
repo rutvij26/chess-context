@@ -35,6 +35,12 @@ export interface InsertableAnalysis {
 
 export async function insertAnalysis(data: InsertableAnalysis): Promise<void> {
   const db = sql();
+  // Use db.json() to pass JSONB values — do NOT pre-stringify with JSON.stringify().
+  // JSON.stringify() produces a JS string, which postgres.js then serializes as a
+  // JSON string value ("…"), storing the wrong JSONB type (string instead of array).
+  // The `as any` casts are needed because our interfaces lack JSON index signatures
+  // but are structurally JSON-serializable at runtime.
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   await db`
     INSERT INTO game_analyses
       (player_game_id, schema_version, move_records, white_accuracy, black_accuracy,
@@ -42,11 +48,11 @@ export async function insertAnalysis(data: InsertableAnalysis): Promise<void> {
     VALUES (
       ${data.player_game_id},
       '0.6',
-      ${JSON.stringify(data.move_records)}::jsonb,
+      ${db.json(data.move_records as any)},
       ${data.white_accuracy},
       ${data.black_accuracy},
-      ${data.critical_moments ? JSON.stringify(data.critical_moments) : null}::jsonb,
-      ${data.phase_breakdown ? JSON.stringify(data.phase_breakdown) : null}::jsonb,
+      ${db.json((data.critical_moments ?? null) as any)},
+      ${db.json((data.phase_breakdown ?? null) as any)},
       ${data.patterns_detected ?? null}
     )
     ON CONFLICT (player_game_id) DO UPDATE SET
@@ -59,6 +65,7 @@ export async function insertAnalysis(data: InsertableAnalysis): Promise<void> {
       patterns_detected = EXCLUDED.patterns_detected,
       analyzed_at      = NOW()
   `;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +78,7 @@ export async function getAnalysesForUser(
   limit = 50
 ): Promise<GameAnalysisRow[]> {
   const db = sql();
-  return db<GameAnalysisRow[]>`
+  const rows = await db<(Omit<GameAnalysisRow, "white_accuracy" | "black_accuracy"> & { white_accuracy: string | null; black_accuracy: string | null })[]>`
     SELECT ga.*
     FROM game_analyses ga
     JOIN player_games pg ON pg.id = ga.player_game_id
@@ -80,6 +87,13 @@ export async function getAnalysesForUser(
     ORDER BY pg.played_at DESC NULLS LAST
     LIMIT ${limit}
   `;
+  // postgres.js v3 returns NUMERIC(5,2) columns as strings — coerce to number here
+  // so the declared GameAnalysisRow type (number | null) matches runtime values.
+  return rows.map((r) => ({
+    ...r,
+    white_accuracy: r.white_accuracy == null ? null : Number(r.white_accuracy),
+    black_accuracy: r.black_accuracy == null ? null : Number(r.black_accuracy),
+  }));
 }
 
 export async function getAnalysisForGame(
