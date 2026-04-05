@@ -301,6 +301,7 @@ export interface RefreshGamesOutput {
   new_games: number;
   queued_for_analysis: number;
   already_analyzed: number;
+  requeued_for_reanalysis?: number;
   status: "processing" | "up_to_date" | "error";
   message: string;
 }

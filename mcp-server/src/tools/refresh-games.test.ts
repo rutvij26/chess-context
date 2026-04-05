@@ -15,6 +15,7 @@ vi.mock("../store/game-store.js", () => ({
 
 vi.mock("../store/analysis-pipeline.js", () => ({
   enqueueUnanalyzedGames: vi.fn(),
+  requeueLowCoverageAnalyses: vi.fn(),
   startPipeline: vi.fn(),
 }));
 
@@ -33,7 +34,7 @@ vi.mock("../data/lichess-api.js", () => ({
 import { handleRefreshGames } from "./refresh-games.js";
 import { isDbConfigured } from "../store/db.js";
 import { insertGames, getGameIdsForUser } from "../store/game-store.js";
-import { enqueueUnanalyzedGames, startPipeline } from "../store/analysis-pipeline.js";
+import { enqueueUnanalyzedGames, requeueLowCoverageAnalyses, startPipeline } from "../store/analysis-pipeline.js";
 import { countAnalysesForUser } from "../store/analysis-store.js";
 import { getRecentGames as chesscomGetGames } from "../data/chesscom-api.js";
 import { getRecentGames as lichessGetGames } from "../data/lichess-api.js";
@@ -42,6 +43,7 @@ const mockIsDbConfigured = vi.mocked(isDbConfigured);
 const mockInsertGames = vi.mocked(insertGames);
 const mockGetGameIds = vi.mocked(getGameIdsForUser);
 const mockEnqueue = vi.mocked(enqueueUnanalyzedGames);
+const mockRequeue = vi.mocked(requeueLowCoverageAnalyses);
 const mockStartPipeline = vi.mocked(startPipeline);
 const mockCountAnalyses = vi.mocked(countAnalysesForUser);
 const mockChesscomGames = vi.mocked(chesscomGetGames);
@@ -81,6 +83,7 @@ beforeEach(() => {
   mockInsertGames.mockReset();
   mockGetGameIds.mockReset();
   mockEnqueue.mockReset();
+  mockRequeue.mockReset();
   mockStartPipeline.mockReset();
   mockCountAnalyses.mockReset();
   mockChesscomGames.mockReset();
@@ -90,6 +93,7 @@ beforeEach(() => {
   mockInsertGames.mockResolvedValue(0);
   mockGetGameIds.mockResolvedValue(new Set(["oldgame"]));
   mockEnqueue.mockResolvedValue(3);
+  mockRequeue.mockResolvedValue(0);
   mockStartPipeline.mockReturnValue(undefined);
   mockCountAnalyses.mockResolvedValue(15);
 });

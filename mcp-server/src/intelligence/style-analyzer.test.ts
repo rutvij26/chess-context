@@ -109,8 +109,16 @@ describe("deriveStyleLabel", () => {
     expect(deriveStyleLabel({ aggression: 75, positional_sense: 50, tactical_sharpness: 50, endgame_skill: 50, time_management: null })).toBe("Sharp Gambiteer");
   });
 
-  it("returns Solid Positional Player for high positional + low aggression", () => {
-    expect(deriveStyleLabel({ aggression: 30, positional_sense: 75, tactical_sharpness: 50, endgame_skill: 50, time_management: null })).toBe("Solid Positional Player");
+  it("returns Solid Positional Player for high positional + high tactical + low aggression", () => {
+    expect(deriveStyleLabel({ aggression: 30, positional_sense: 75, tactical_sharpness: 65, endgame_skill: 50, time_management: null })).toBe("Solid Positional Player");
+  });
+
+  it("returns Tactical Fighter for high tactical + low aggression + low positional", () => {
+    expect(deriveStyleLabel({ aggression: 30, positional_sense: 50, tactical_sharpness: 65, endgame_skill: 50, time_management: null })).toBe("Tactical Fighter");
+  });
+
+  it("returns Cautious Strategist for high positional + low aggression + low tactical", () => {
+    expect(deriveStyleLabel({ aggression: 30, positional_sense: 75, tactical_sharpness: 50, endgame_skill: 50, time_management: null })).toBe("Cautious Strategist");
   });
 
   it("returns Reactive Defender for low aggression + low tactical sharpness", () => {
