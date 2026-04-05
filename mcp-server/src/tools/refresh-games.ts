@@ -2,7 +2,7 @@ import { Chess } from "chess.js";
 import { getRecentGames as getChessComGames } from "../data/chesscom-api.js";
 import { getRecentGames as getLichessGames } from "../data/lichess-api.js";
 import { insertGames, getGameIdsForUser, type InsertableGame } from "../store/game-store.js";
-import { enqueueUnanalyzedGames, startPipeline } from "../store/analysis-pipeline.js";
+import { enqueueUnanalyzedGames, requeueLowCoverageAnalyses, startPipeline } from "../store/analysis-pipeline.js";
 import { isDbConfigured } from "../store/db.js";
 import type { RefreshGamesInput, RefreshGamesOutput } from "../types/index.js";
 
@@ -149,18 +149,28 @@ export async function handleRefreshGames(
 
   // Queue unanalyzed games for background processing
   const queued = await enqueueUnanalyzedGames(input.platform, usernameLC);
-  const alreadyAnalyzed = fetched - queued - (fetched - newGames < 0 ? 0 : fetched - newGames);
+
+  // Re-queue any analyses that ran before the engine was ready (zero accuracy scores)
+  const requeued = await requeueLowCoverageAnalyses(input.platform, usernameLC);
+
+  const totalQueued = queued + requeued;
 
   // Kick off background pipeline (non-blocking)
-  if (queued > 0) {
+  if (totalQueued > 0) {
     startPipeline();
   }
 
-  const status = queued > 0 ? "processing" : "up_to_date";
-  const message =
-    queued > 0
-      ? `Fetched ${fetched} games (${newGames} new). Analyzing ${queued} games in the background — call get_mistake_patterns or get_style_fingerprint in a minute.`
-      : `Fetched ${fetched} games. All games are already analyzed and ready.`;
+  const status = totalQueued > 0 ? "processing" : "up_to_date";
+  let message: string;
+  if (queued > 0 && requeued > 0) {
+    message = `Fetched ${fetched} games (${newGames} new). Analyzing ${queued} new + ${requeued} re-queued (previously analyzed without engine) in the background — call get_mistake_patterns or get_style_fingerprint in a minute.`;
+  } else if (queued > 0) {
+    message = `Fetched ${fetched} games (${newGames} new). Analyzing ${queued} games in the background — call get_mistake_patterns or get_style_fingerprint in a minute.`;
+  } else if (requeued > 0) {
+    message = `Fetched ${fetched} games. Re-analyzing ${requeued} game(s) whose previous analysis ran before the engine was ready — call get_style_fingerprint or get_mistake_patterns in a minute.`;
+  } else {
+    message = `Fetched ${fetched} games. All games are already analyzed and ready.`;
+  }
 
   return {
     username: input.username,
@@ -169,6 +179,7 @@ export async function handleRefreshGames(
     new_games: newGames,
     queued_for_analysis: queued,
     already_analyzed: Math.max(0, fetched - newGames),
+    ...(requeued > 0 ? { requeued_for_reanalysis: requeued } : {}),
     status,
     message,
   };

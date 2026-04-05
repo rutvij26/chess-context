@@ -48,6 +48,37 @@ export async function enqueueUnanalyzedGames(
 }
 
 // ---------------------------------------------------------------------------
+// Re-queue low-coverage analyses
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-queue completed analyses where both accuracy scores are 0 or null —
+ * a sign that the engine was not ready when the analysis ran.
+ * Uses ON CONFLICT DO UPDATE so it is idempotent and safe to call every refresh.
+ * Returns the count of games re-queued.
+ */
+export async function requeueLowCoverageAnalyses(
+  platform: string,
+  username: string
+): Promise<number> {
+  const db = sql();
+  const result = await db`
+    INSERT INTO analysis_queue (player_game_id, status)
+    SELECT pg.id, 'pending'
+    FROM player_games pg
+    JOIN game_analyses ga ON ga.player_game_id = pg.id
+    WHERE pg.platform = ${platform}
+      AND pg.username = ${username.toLowerCase()}
+      AND (ga.white_accuracy IS NULL OR ga.white_accuracy = 0)
+      AND (ga.black_accuracy IS NULL OR ga.black_accuracy = 0)
+    ON CONFLICT (player_game_id)
+    DO UPDATE SET status = 'pending', started_at = NULL, completed_at = NULL, error = NULL
+    RETURNING analysis_queue.player_game_id
+  `;
+  return result.length;
+}
+
+// ---------------------------------------------------------------------------
 // Status check
 // ---------------------------------------------------------------------------
 
