@@ -24,7 +24,7 @@ type ProgressCallback = (completed: number, total: number) => void;
 // PGN / URL resolution
 // ---------------------------------------------------------------------------
 
-async function resolvePgn(input: AnalyzeGameInput): Promise<string> {
+export async function resolvePgn(input: AnalyzeGameInput): Promise<string> {
   // 1. Raw PGN provided directly
   if (input.pgn) return input.pgn;
 
@@ -80,7 +80,7 @@ async function resolvePgn(input: AnalyzeGameInput): Promise<string> {
 // PGN header parsing
 // ---------------------------------------------------------------------------
 
-function extractHeader(pgn: string, tag: string): string {
+export function extractHeader(pgn: string, tag: string): string {
   const match = pgn.match(new RegExp(`\\[${tag} "([^"]+)"\\]`));
   return match?.[1] ?? "Unknown";
 }
@@ -90,7 +90,7 @@ function extractHeader(pgn: string, tag: string): string {
 // ---------------------------------------------------------------------------
 
 
-function lineToEvalCp(line: UCIAnalysisLine): number {
+export function lineToEvalCp(line: UCIAnalysisLine): number {
   if (line.score_mate !== null) {
     return line.score_mate > 0 ? 10000 : -10000;
   }

@@ -16,6 +16,7 @@ import { handleGetAnalysisProgress } from "./tools/get-analysis-progress.js";
 import { handleGetOpeningTheory } from "./tools/get-opening-theory.js";
 import { handleFindOpeningGaps } from "./tools/find-opening-gaps.js";
 import { handleGeneratePuzzles } from "./tools/generate-puzzles.js";
+import { handleExplainMove } from "./tools/explain-move.js";
 import {
   AnalyzePositionInputSchema,
   AnalyzeGameInputSchema,
@@ -29,6 +30,7 @@ import {
   GetOpeningTheoryInputSchema,
   FindOpeningGapsInputSchema,
   GeneratePuzzlesInputSchema,
+  ExplainMoveInputSchema,
 } from "./types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -253,6 +255,26 @@ server.registerTool(
   },
   async (input) => {
     const result = await handleGeneratePuzzles(input);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.registerTool(
+  "explain_move",
+  {
+    title: "Explain Move",
+    description:
+      "Given a chess game and a move number, explains why the move was played, " +
+      "whether it was the best move, what the engine recommends instead, and what the player should learn. " +
+      "Accepts PGN text, chess.com game URL, lichess game URL, or username (uses their most recent game). " +
+      "Returns classification (best/good/inaccuracy/mistake/blunder), move intent, best alternative with explanation, " +
+      "actionable takeaway, and a boardData payload for interactive board rendering.",
+    inputSchema: ExplainMoveInputSchema,
+  },
+  async (input) => {
+    const result = await handleExplainMove(input);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };

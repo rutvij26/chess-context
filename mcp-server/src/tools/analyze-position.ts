@@ -23,7 +23,7 @@ import type {
  * Convert a UCI move (e.g. "e2e4") to SAN notation using chess.js.
  * Returns the UCI move if conversion fails.
  */
-function uciToSan(board: Chess, uciMove: string): string {
+export function uciToSan(board: Chess, uciMove: string): string {
   try {
     const from = uciMove.slice(0, 2);
     const to = uciMove.slice(2, 4);
@@ -45,7 +45,7 @@ function uciToSan(board: Chess, uciMove: string): string {
  * Convert a PV (array of UCI moves) to SAN notation.
  * Returns the first 4 moves as SAN.
  */
-function pvToSan(board: Chess, pv: string[]): string[] {
+export function pvToSan(board: Chess, pv: string[]): string[] {
   const clone = new Chess(board.fen());
   const sans: string[] = [];
 

@@ -556,3 +556,149 @@ export interface GeneratePuzzlesOutput {
   games_scanned: number;
   note?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Board Artifact (Issue #91 — boardData standard)
+// ---------------------------------------------------------------------------
+
+export interface BoardArrow {
+  from: string;
+  to: string;
+  color: string;
+  label: string | null;
+  width: "thin" | "normal" | "thick";
+}
+
+export interface BoardMove {
+  ply: number;
+  san: string;
+  fen: string;
+  uci: string;
+  eval: number | null;
+  classification:
+    | "brilliant"
+    | "best"
+    | "excellent"
+    | "good"
+    | "inaccuracy"
+    | "mistake"
+    | "blunder"
+    | "miss"
+    | "book"
+    | null;
+  annotation: string | null;
+  arrows: BoardArrow[];
+  clock: number | null;
+}
+
+export interface BoardData {
+  meta: {
+    initialFen: string;
+    orientation: "white" | "black";
+  };
+  moves: BoardMove[];
+  players: {
+    white: { name: string; rating: number | null };
+    black: { name: string; rating: number | null };
+  };
+  opening: { eco: string; name: string; moves: string } | null;
+  result: string;
+  timeControl: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// explain_move tool (Issue #87)
+// ---------------------------------------------------------------------------
+
+export const ExplainMoveInputSchema = z.object({
+  move_number: z
+    .number()
+    .int()
+    .min(1)
+    .describe("The full-move number to explain (e.g. 15 means move 15)"),
+  color: z
+    .enum(["white", "black"])
+    .describe("Which side's move to explain at that move number"),
+  pgn: z.string().optional().describe("Raw PGN text of the game"),
+  game_url: z
+    .string()
+    .optional()
+    .describe("Chess.com or Lichess game URL"),
+  lichess_id: z
+    .string()
+    .optional()
+    .describe("Lichess game ID (8-character string)"),
+  username: z
+    .string()
+    .optional()
+    .describe(
+      "Chess.com or Lichess username — if no other source is given, uses their most recent game"
+    ),
+  platform: z
+    .enum(["chess.com", "lichess"])
+    .optional()
+    .describe("Required when source is a username without a URL"),
+  player_level: z
+    .enum(["beginner", "club", "advanced"])
+    .optional()
+    .describe(
+      "Override automatic level detection. Auto-detected from rating when username+platform provided."
+    ),
+  depth: z
+    .number()
+    .int()
+    .min(1)
+    .max(25)
+    .optional()
+    .describe("Engine analysis depth (default: 18)"),
+});
+
+export type ExplainMoveInput = z.infer<typeof ExplainMoveInputSchema>;
+
+export interface MoveExplanation {
+  move_number: number;
+  color: "white" | "black";
+  move_played: string;
+  move_played_uci: string;
+  classification:
+    | "brilliant"
+    | "best"
+    | "excellent"
+    | "good"
+    | "inaccuracy"
+    | "mistake"
+    | "blunder"
+    | "miss"
+    | "missed_win"
+    | "book";
+  eval_before_cp: number;
+  eval_after_cp: number;
+  eval_drop_cp: number;
+  move_intent: string;
+  assessment: string;
+  best_move: {
+    san: string;
+    uci: string;
+    eval_cp: number | null;
+    eval_mate: number | null;
+    continuation: string[];
+    why_better: string;
+  } | null;
+  alternative: {
+    san: string;
+    uci: string;
+    eval_cp: number | null;
+    eval_mate: number | null;
+    continuation: string[];
+  } | null;
+  position_context: {
+    phase: GamePhase;
+    themes: ChessTheme[];
+    pawn_structures: PawnStructure[];
+    material_balance: number;
+    narrative: string;
+  };
+  takeaway: string;
+  player_level: "beginner" | "club" | "advanced";
+  board_data: BoardData | null;
+}
