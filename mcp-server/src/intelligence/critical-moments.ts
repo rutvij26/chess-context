@@ -25,11 +25,11 @@ export interface MoveRecord {
  * White's eval is positive when white is better.
  * Black's eval: we need to flip the sign when it's black's turn.
  */
-function evalForSideToMove(evalCp: number, color: "white" | "black"): number {
+export function evalForSideToMove(evalCp: number, color: "white" | "black"): number {
   return color === "white" ? evalCp : -evalCp;
 }
 
-function categorise(evalDropCp: number, hadWinning: boolean, isNowLosing: boolean): MoveCategory {
+export function categorise(evalDropCp: number, hadWinning: boolean, isNowLosing: boolean): MoveCategory {
   if (hadWinning && isNowLosing) return "missed_win";
   if (evalDropCp >= config.analysis.blunderThreshold) return "blunder";
   if (evalDropCp >= config.analysis.mistakeThreshold) return "mistake";

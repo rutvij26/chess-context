@@ -67,7 +67,14 @@
       Free, offline-capable once game data is fetched.
       → [#18](https://github.com/rutvij26/chess-context/issues/18)
 
-### v1.0 — Advanced Player Tools
+### v1.0 — ELO Climber _(public release, rich artifact output)_
+Theme: every tool asks "how does this help me climb?". Targets public release with clean onboarding.
+All position-returning tools include a `boardData` artifact payload for interactive SVG board rendering.
+
+#### Fix first
+- [ ] **BUG** `analyze_game` eval POV not normalized → [#85](https://github.com/rutvij26/chess-context/issues/85)
+
+#### New tools
 - [ ] `get_endgame_analysis` — Syzygy tablebase via Lichess free API (≤7 pieces):
       win/draw/loss verdict + human-readable winning plan → [#19](https://github.com/rutvij26/chess-context/issues/19)
 - [ ] `detect_tilt` — identify tilt indicators from recent game patterns:
@@ -82,6 +89,22 @@
       whether the novelty was an improvement or a mistake → [#23](https://github.com/rutvij26/chess-context/issues/23)
 - [ ] `compare_games` — surface what changed between two games by the same player
       (useful for "did my opening improve after studying this line?") → [#24](https://github.com/rutvij26/chess-context/issues/24)
+- [ ] `explain_move` — given any game (PGN / chess.com URL / lichess URL / username) + move
+      number, explain why the move was played, what the best alternative was, and what to
+      remember → [#87](https://github.com/rutvij26/chess-context/issues/87)
+- [ ] `get_improvement_tracker` — week-over-week accuracy, blunder rate trend, ELO trajectory
+      with plain-English narrative → [#92](https://github.com/rutvij26/chess-context/issues/92)
+- [ ] `get_coach` — context-aware improvement advisor with `frequency: daily | weekly | monthly`.
+      Pre-game advisor + post-session debrief + structured study plan, all in one tool.
+      → [#88](https://github.com/rutvij26/chess-context/issues/88)
+- [ ] `reanalyze_games` — bulk re-run Stockfish analysis on stored games; useful after engine
+      upgrades or to fill coverage gaps → [#89](https://github.com/rutvij26/chess-context/issues/89)
+
+#### Infrastructure
+- [ ] `refresh_games` bulk sync — date-range params, incremental mode, 200+ game support,
+      fix `fetchGameByUrl` 50-game cap → [#90](https://github.com/rutvij26/chess-context/issues/90)
+- [ ] Board artifact standard — all position tools return `boardData` (FENs, arrows, classifications,
+      annotations) so Claude renders self-contained interactive SVG board artifacts → [#91](https://github.com/rutvij26/chess-context/issues/91)
 
 ### v2.0 — Advanced / Self-Hosting
 - [ ] Docker Compose deployment with native Stockfish + Leela Chess Zero → [#25](https://github.com/rutvij26/chess-context/issues/25)
