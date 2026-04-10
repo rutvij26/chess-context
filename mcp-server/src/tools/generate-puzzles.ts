@@ -3,7 +3,8 @@ import { getAnalysesForUser } from "../store/analysis-store.js";
 import { getGamesForUser } from "../store/game-store.js";
 import { extractPuzzles, type GameMeta } from "../intelligence/puzzle-classifier.js";
 import { waitUntilRouterReady } from "../engines/engine-router.js";
-import type { GeneratePuzzlesInput, GeneratePuzzlesOutput } from "../types/index.js";
+import { buildPositionBoardData, sanToUci } from "../intelligence/board-builder.js";
+import type { GeneratePuzzlesInput, GeneratePuzzlesOutput, BoardArrow } from "../types/index.js";
 
 export async function handleGeneratePuzzles(
   input: GeneratePuzzlesInput
@@ -81,7 +82,7 @@ export async function handleGeneratePuzzles(
 
   // Apply puzzle_type filter post-extraction (based on theme keywords)
   const puzzleType = input.puzzle_type ?? "all";
-  const filtered =
+  const filteredRaw =
     puzzleType === "all"
       ? rawPuzzles
       : rawPuzzles.filter((p) => {
@@ -96,6 +97,26 @@ export async function handleGeneratePuzzles(
           }
           return true;
         });
+
+  // Add board_data to each puzzle: show the starting position with an arrow
+  // for the first solution move so the user can immediately visualise the tactic.
+  const filtered = filteredRaw.map((puzzle) => {
+    const arrows: BoardArrow[] = [];
+    const firstMoveSan = puzzle.solution[0];
+    if (firstMoveSan) {
+      const uci = sanToUci(puzzle.fen, firstMoveSan);
+      if (uci) {
+        arrows.push({
+          from: uci.slice(0, 2),
+          to: uci.slice(2, 4),
+          color: "#4caf50",
+          label: "Solution",
+          width: "thick",
+        });
+      }
+    }
+    return { ...puzzle, board_data: buildPositionBoardData(puzzle.fen, arrows, puzzle.color_to_move) };
+  });
 
   // Produce a precise note depending on WHY no puzzles were returned.
   let note: string | undefined;

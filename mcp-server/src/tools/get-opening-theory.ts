@@ -1,4 +1,5 @@
 import { getLichessOpeningExplorer } from "../data/lichess-api.js";
+import { buildPositionBoardData, buildPositionArrows, sanToUci } from "../intelligence/board-builder.js";
 import type {
   GetOpeningTheoryInput,
   GetOpeningTheoryOutput,
@@ -258,6 +259,7 @@ export async function handleGetOpeningTheory(
       narrative: "",
       lichess_explorer_url: "https://lichess.org/analysis",
       note: "Provide either a FEN string or an opening name.",
+      board_data: null,
     };
   }
 
@@ -291,6 +293,7 @@ export async function handleGetOpeningTheory(
       narrative: buildNarrative(opening, emptyStats, playerLevel, []),
       lichess_explorer_url: `https://lichess.org/analysis/${encodeURIComponent(fen!)}`,
       note: `Lichess Opening Explorer unavailable (${err instanceof Error ? err.message : String(err)}). Showing local opening data only — win statistics and main continuations require a live connection.`,
+      board_data: buildPositionBoardData(fen!, [], "white"),
     };
   }
 
@@ -319,6 +322,14 @@ export async function handleGetOpeningTheory(
 
   const topMoveSans = explorerData.moves.slice(0, 5).map((m) => m.san);
 
+  // Build board_data: show the opening position with arrows for the top moves.
+  const topMoveUcis = topMoveSans
+    .slice(0, 3)
+    .map((san) => sanToUci(fen!, san))
+    .filter((uci): uci is string => uci !== null);
+  const openingArrows = buildPositionArrows(topMoveUcis);
+  const boardData = buildPositionBoardData(fen!, openingArrows, "white");
+
   return {
     opening_name: openingName,
     eco,
@@ -328,5 +339,6 @@ export async function handleGetOpeningTheory(
     historical_context: buildHistoricalContext(openingName),
     narrative: buildNarrative(openingName, winStats, playerLevel, topMoveSans),
     lichess_explorer_url: `https://lichess.org/analysis/${encodeURIComponent(fen!)}`,
+    board_data: boardData,
   };
 }
