@@ -8,6 +8,7 @@ import {
 } from "../intelligence/position-classifier.js";
 import { tagThemes } from "../intelligence/theme-tagger.js";
 import { generateNarrative } from "../intelligence/narrative-generator.js";
+import { buildPositionBoardData, buildPositionArrows } from "../intelligence/board-builder.js";
 import { config } from "../config.js";
 import type {
   AnalyzePositionInput,
@@ -152,6 +153,11 @@ export async function handleAnalyzePosition(
     bestLine.score_mate
   );
 
+  const topMoveUcis = topMoves.map((m) => m.move_uci);
+  const arrows = buildPositionArrows(topMoveUcis);
+  const sideToMove = board.turn() === "w" ? "white" : "black";
+  const boardData = buildPositionBoardData(input.fen, arrows, sideToMove);
+
   return {
     evaluation: {
       score_cp: bestLine.score_cp,
@@ -169,5 +175,6 @@ export async function handleAnalyzePosition(
       complexity,
       narrative,
     },
+    board_data: boardData,
   };
 }

@@ -116,6 +116,46 @@ export const ScoutOpponentInputSchema = z.object({
 export type ScoutOpponentInput = z.infer<typeof ScoutOpponentInputSchema>;
 
 // ---------------------------------------------------------------------------
+// Board visualization types (shared across tools)
+// ---------------------------------------------------------------------------
+
+export interface BoardArrow {
+  from: string;
+  to: string;
+  color: string;
+  label: string | null;
+  width: "thin" | "normal" | "thick";
+}
+
+export interface BoardMove {
+  ply: number;
+  san: string;
+  fen: string;
+  uci: string;
+  eval: number | null;
+  classification: string | null;
+  annotation: string | null;
+  arrows: BoardArrow[];
+  clock: number | null;
+}
+
+export interface BoardData {
+  meta: {
+    initialFen: string;
+    orientation: "white" | "black";
+    initial_arrows?: BoardArrow[];
+  };
+  moves: BoardMove[];
+  players: {
+    white: { name: string; rating: number | null };
+    black: { name: string; rating: number | null };
+  };
+  opening: { eco: string; name: string; moves: string } | null;
+  result: string;
+  timeControl: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Internal engine types
 // ---------------------------------------------------------------------------
 
@@ -164,6 +204,7 @@ export interface PositionAnalysis {
   };
   best_moves: TopMove[];
   position_context: PositionContext;
+  board_data?: BoardData | null;
 }
 
 export interface CriticalMoment {
@@ -215,6 +256,7 @@ export interface GameAnalysis {
   summary: GameSummary;
   critical_moments: CriticalMoment[];
   patterns_detected: string[];
+  board_data?: BoardData | null;
 }
 
 export interface RatingInfo {
@@ -341,6 +383,7 @@ export interface ReviewGameOutput {
   };
   study_recommendations: string[];
   narrative: string;
+  board_data?: BoardData | null;
 }
 
 // get_mistake_patterns
@@ -471,6 +514,7 @@ export interface GetOpeningTheoryOutput {
   narrative: string;                       // adapted by player_level
   lichess_explorer_url: string;
   note?: string;
+  board_data?: BoardData | null;
 }
 
 // find_opening_gaps
@@ -504,6 +548,7 @@ export interface OpeningGap {
   player_loss_rate: number;          // when opponent deviates
   most_common_deviation: string | null; // opponent's most frequent surprise move (SAN)
   study_suggestion: string;
+  board_data?: BoardData | null;
 }
 
 export interface FindOpeningGapsOutput {
@@ -548,6 +593,7 @@ export interface ChessPuzzle {
   theme: string;                       // e.g. "fork", "pin", "back_rank_weakness"
   source_game_id: string | null;
   source_move_number: number;
+  board_data?: BoardData | null;
 }
 
 export interface GeneratePuzzlesOutput {

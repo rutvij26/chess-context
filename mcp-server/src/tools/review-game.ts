@@ -195,6 +195,11 @@ export async function handleReviewGame(
   // Narrative
   const narrative = buildNarrative(analysis, color, result, level);
 
+  // Board data: use the game board from analysis but orient to the player's color.
+  const boardData = analysis.board_data
+    ? { ...analysis.board_data, meta: { ...analysis.board_data.meta, orientation: color } }
+    : null;
+
   return {
     player: input.player_username,
     player_level: level,
@@ -204,5 +209,6 @@ export async function handleReviewGame(
     phase_performance: phasePerformance,
     study_recommendations: studyRecs,
     narrative,
+    board_data: boardData,
   };
 }

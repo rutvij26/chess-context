@@ -9,6 +9,7 @@ import {
   type MoveRecord,
 } from "../intelligence/critical-moments.js";
 import { classifyPhase } from "../intelligence/position-classifier.js";
+import { buildGameBoardData } from "../intelligence/board-builder.js";
 import { config } from "../config.js";
 import type {
   AnalyzeGameInput,
@@ -378,12 +379,52 @@ async function runAnalysis(
     mistake_categories: mistakeCategories,
   };
 
+  // Build board_data: annotate critical plies with arrows and classifications.
+  const criticalPlies = new Set<number>();
+  const classifications = new Map<number, string>();
+  const annotations = new Map<number, string>();
+  for (const cm of criticalMoments) {
+    const ply = (cm.move_number - 1) * 2 + (cm.color === "black" ? 2 : 1);
+    criticalPlies.add(ply);
+    classifications.set(ply, cm.category);
+    annotations.set(ply, cm.explanation);
+  }
+
+  const whiteEloStr = extractHeader(pgn, "WhiteElo");
+  const blackEloStr = extractHeader(pgn, "BlackElo");
+  const eco = extractHeader(pgn, "ECO");
+  const openingName = extractHeader(pgn, "Opening");
+
+  const boardData = buildGameBoardData({
+    history: history.map((m) => ({
+      from: m.from as string,
+      to: m.to as string,
+      san: m.san,
+      ...(m.promotion !== undefined ? { promotion: m.promotion as string } : {}),
+    })),
+    evals,
+    bestMovesUci: bestMoves,
+    criticalPlies,
+    classifications,
+    annotations,
+    orientation: "white",
+    white: gameInfo.white,
+    black: gameInfo.black,
+    whiteRating: whiteEloStr !== "Unknown" ? parseInt(whiteEloStr, 10) || null : null,
+    blackRating: blackEloStr !== "Unknown" ? parseInt(blackEloStr, 10) || null : null,
+    eco: eco !== "Unknown" ? eco : null,
+    openingName: openingName !== "Unknown" ? openingName : null,
+    result: gameInfo.result,
+    timeControl: gameInfo.time_control !== "Unknown" ? gameInfo.time_control : null,
+  });
+
   return {
     analysis: {
       game_info: gameInfo,
       summary,
       critical_moments: criticalMoments,
       patterns_detected: patterns,
+      board_data: boardData,
     },
     moveRecords,
   };

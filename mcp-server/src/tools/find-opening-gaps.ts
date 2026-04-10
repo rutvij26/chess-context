@@ -1,7 +1,8 @@
 import { getRecentGames as getChessComGames } from "../data/chesscom-api.js";
 import { getRecentGames as getLichessGames } from "../data/lichess-api.js";
 import { detectOpeningGaps, type GameRecord } from "../intelligence/opening-gap-detector.js";
-import type { FindOpeningGapsInput, FindOpeningGapsOutput } from "../types/index.js";
+import { buildPositionBoardData, sanToUci } from "../intelligence/board-builder.js";
+import type { FindOpeningGapsInput, FindOpeningGapsOutput, BoardArrow } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,7 +102,26 @@ export async function handleFindOpeningGaps(
     };
   }
 
-  const gaps = detectOpeningGaps(gameRecords, color, minOccurrences);
+  const rawGaps = detectOpeningGaps(gameRecords, color, minOccurrences);
+
+  // Add board_data to each gap: show the position with an arrow for the most
+  // common opponent deviation so the user can immediately see what to study.
+  const gaps = rawGaps.map((gap) => {
+    const arrows: BoardArrow[] = [];
+    if (gap.most_common_deviation) {
+      const uci = sanToUci(gap.fen, gap.most_common_deviation);
+      if (uci) {
+        arrows.push({
+          from: uci.slice(0, 2),
+          to: uci.slice(2, 4),
+          color: "#f44336",
+          label: "Deviation",
+          width: "thick",
+        });
+      }
+    }
+    return { ...gap, board_data: buildPositionBoardData(gap.fen, arrows, color) };
+  });
 
   const summary = buildSummary(input.username, color, gameRecords.length, gaps.length);
 
