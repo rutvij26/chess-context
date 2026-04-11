@@ -116,46 +116,6 @@ export const ScoutOpponentInputSchema = z.object({
 export type ScoutOpponentInput = z.infer<typeof ScoutOpponentInputSchema>;
 
 // ---------------------------------------------------------------------------
-// Board visualization types (shared across tools)
-// ---------------------------------------------------------------------------
-
-export interface BoardArrow {
-  from: string;
-  to: string;
-  color: string;
-  label: string | null;
-  width: "thin" | "normal" | "thick";
-}
-
-export interface BoardMove {
-  ply: number;
-  san: string;
-  fen: string;
-  uci: string;
-  eval: number | null;
-  classification: string | null;
-  annotation: string | null;
-  arrows: BoardArrow[];
-  clock: number | null;
-}
-
-export interface BoardData {
-  meta: {
-    initialFen: string;
-    orientation: "white" | "black";
-    initial_arrows?: BoardArrow[];
-  };
-  moves: BoardMove[];
-  players: {
-    white: { name: string; rating: number | null };
-    black: { name: string; rating: number | null };
-  };
-  opening: { eco: string; name: string; moves: string } | null;
-  result: string;
-  timeControl: string | null;
-}
-
-// ---------------------------------------------------------------------------
 // Internal engine types
 // ---------------------------------------------------------------------------
 
@@ -641,6 +601,7 @@ export interface BoardData {
   meta: {
     initialFen: string;
     orientation: "white" | "black";
+    initial_arrows?: BoardArrow[];
   };
   moves: BoardMove[];
   players: {

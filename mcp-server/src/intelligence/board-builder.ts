@@ -153,7 +153,7 @@ export function buildGameBoardData(params: GameBoardParams): BoardData | null {
       const fen = replayBoard.fen();
       const uci = move.from + move.to + (move.promotion ?? "");
       const ply = i + 1; // 1-indexed
-      const classification = params.classifications.get(ply) ?? null;
+      const classification = (params.classifications.get(ply) ?? null) as BoardMove["classification"];
       const arrows: BoardArrow[] = [];
 
       if (params.criticalPlies.has(ply)) {
