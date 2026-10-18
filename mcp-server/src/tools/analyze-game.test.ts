@@ -65,8 +65,9 @@ beforeEach(() => {
   getEvalMock.mockReset();
   fetchGameByUrlMock.mockReset();
   fetchLastGameMock.mockReset();
-  // Default: engine returns equal eval for all positions
-  getEvalMock.mockResolvedValue([makeEvalLine(20)]);
+  // Default: engine returns 0cp (equal) for all positions.
+  // Using 0 avoids phantom swings after POV normalisation (sign-flip on black).
+  getEvalMock.mockResolvedValue([makeEvalLine(0)]);
 });
 
 // ---------------------------------------------------------------------------
@@ -148,18 +149,29 @@ describe("handleAnalyzeGame — output shape", () => {
 
 describe("handleAnalyzeGame — critical moments", () => {
   it("detects a blunder when a move causes a 200cp+ drop", async () => {
-    // Positions 0-3: eval=20 (equal). Position 4: eval=-250.
-    // The swing triggers the critical-depth second pass, which re-evaluates
-    // position 4. We key the blunder on the FEN so both passes return -250.
+    // SHORT_PGN: 9 positions (index 0..8).
+    // Position 2 (after 1.e4 e5): black to move. We make it eval as equal.
+    // Position 3 (after 1.e4 e5 2.Nf3): black to move. We give a large swing
+    //   to simulate a blunder on white's Nf3 that loses material.
+    //
+    // Engine returns evals from side-to-move POV. The code normalises to white's POV.
+    // Position 2 (white to move): raw +20 → normalised +20
+    // Position 3 (black to move): raw +250 → normalised -250 (bad for white)
+    // That's a 270cp drop from white's perspective on white's 2.Nf3 → blunder.
+    //
+    // We key on the FEN so the critical-depth re-evaluation returns the same value.
     let callCount = 0;
     let blunderFen: string | null = null;
     getEvalMock.mockImplementation(async (fen: string) => {
       callCount++;
+      // Position index 3 is the 4th call in the first pass
       if (callCount === 4) {
         blunderFen = fen;
       }
       if (blunderFen !== null && fen === blunderFen) {
-        return [{ depth: 18, score_cp: -250, score_mate: null, pv: ["e2e4"], multipv_rank: 1 }];
+        // Black to move, raw +250 from side-to-move = +250 from black's POV
+        // Normalised to white's POV: -250 (bad for white)
+        return [{ depth: 18, score_cp: 250, score_mate: null, pv: ["e7e5"], multipv_rank: 1 }];
       }
       return [makeEvalLine(20)];
     });
@@ -296,7 +308,9 @@ describe("handleAnalyzeGame — adaptive depth", () => {
   });
 
   it("does NOT use criticalDepth when all evals are stable (no swing > quietThreshold)", async () => {
-    getEvalMock.mockResolvedValue([makeEvalLine(20)]);
+    // Return 0cp for all positions — after POV normalisation, all positions
+    // remain 0cp from white's perspective, so no delta exceeds quietThreshold.
+    getEvalMock.mockResolvedValue([makeEvalLine(0)]);
 
     await handleAnalyzeGame({ pgn: SHORT_PGN });
 
@@ -313,8 +327,9 @@ describe("handleAnalyzeGame — adaptive depth", () => {
 
 describe("handleAnalyzeGame — accuracy", () => {
   it("reports 100% accuracy when all moves are within 30cp of best", async () => {
-    // Constant eval of +20 → all moves are "accurate" (drop=0 < 30)
-    getEvalMock.mockResolvedValue([makeEvalLine(20)]);
+    // Constant eval of 0cp → after POV normalisation, all positions are 0
+    // from white's perspective. Every move has eval_drop=0, so accuracy=100%.
+    getEvalMock.mockResolvedValue([makeEvalLine(0)]);
 
     const result = await handleAnalyzeGame({ pgn: SHORT_PGN });
     expect(result.summary.white_accuracy).toBe(100);

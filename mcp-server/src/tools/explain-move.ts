@@ -545,12 +545,19 @@ export async function handleExplainMove(
     getEval(fenAfter, depth, 1),
   ]);
 
-  const evalBeforeCp =
+  // Engine evals are from side-to-move's POV. Normalise to White's POV.
+  const rawBefore =
     linesBefore.length > 0 && linesBefore[0] ? lineToEvalCp(linesBefore[0]) : 0;
-  const evalAfterCp =
+  const rawAfter =
     linesAfter.length > 0 && linesAfter[0] ? lineToEvalCp(linesAfter[0]) : 0;
 
-  // 5. Normalize eval drop (side-to-move, immune to Issue #85)
+  // fenBefore: it's input.color's turn → flip if black
+  const evalBeforeCp = input.color === "black" ? -rawBefore : rawBefore;
+  // fenAfter: it's the opponent's turn → flip if white (opponent is black)
+  const opponentColor = input.color === "white" ? "black" : "white";
+  const evalAfterCp = opponentColor === "black" ? -rawAfter : rawAfter;
+
+  // 5. Normalize eval drop to side-to-move perspective
   const evalBeforeStm = evalForSideToMove(evalBeforeCp, input.color);
   const evalAfterStm = evalForSideToMove(evalAfterCp, input.color);
   // bestUci needs to be known before evalDrop for the isBestMove check below.
