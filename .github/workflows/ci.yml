@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: mcp-server
-        run: rm -f package-lock.json && npm install
+        run: npm ci
 
       - name: Build
         working-directory: mcp-server
