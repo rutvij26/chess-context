@@ -18,6 +18,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     pool: "threads",
+    isolate: false,
     include: ["src/**/*.test.ts", "src/**/*.integration.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**"],
     clearMocks: true,
