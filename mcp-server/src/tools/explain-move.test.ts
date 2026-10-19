@@ -107,14 +107,18 @@ describe("handleExplainMove", () => {
   });
 
   it("classifies blunder correctly with best alternative", async () => {
-    // Black plays Nf6?? at move 3 in Scholar's mate — engine recommends something else
+    // Black plays Nf6?? at move 3 in Scholar's mate — engine recommends something else.
+    // Engine evals are from side-to-move's perspective:
+    //   fenBefore (black to move): +50 from black's POV (black slightly ahead)
+    //   fenAfter (white to move): +300 from white's POV (white is now winning)
+    // Normalised to White's POV: before = -50, after = +300 → 350cp drop for black.
+    // hadWinning: evalBeforeStm = 50 < 300 → false → categorised as "blunder" not "missed_win".
     const engineBefore = mockEval([
-      { score_cp: 300, score_mate: null, pv: ["e7e6", "d1h5"] }, // not Nf6
-      { score_cp: 200, score_mate: null, pv: ["d7d6", "d1h5"] },
+      { score_cp: 50, score_mate: null, pv: ["e7e6", "d1h5"] }, // not Nf6
+      { score_cp: 30, score_mate: null, pv: ["d7d6", "d1h5"] },
     ]);
-    // score_cp is always from White's perspective — after Nf6??, White is winning (+600)
     const engineAfter = mockEval([
-      { score_cp: 600, score_mate: null, pv: ["d1f7"] },
+      { score_cp: 300, score_mate: null, pv: ["d1f7"] },
     ]);
 
     vi.mocked(getEval)
@@ -134,10 +138,13 @@ describe("handleExplainMove", () => {
   });
 
   it("normalizes eval drop from black's perspective", async () => {
-    // White's eval before: +100 (white slightly better)
-    // After black's move: +50 (still white better, so black improved — eval DROP is negative from white POV)
-    // From black's perspective: before=-100, after=-50, drop = -100 - (-50) = -50 → clamp to 0
-    const before = mockEval([{ score_cp: 100, score_mate: null, pv: ["e7e5"] }]);
+    // Engine evals are from side-to-move's perspective:
+    //   fenBefore (black to move): -100 from black's POV (black is behind)
+    //   fenAfter (white to move): +50 from white's POV (white slightly ahead)
+    // Normalised to White's POV: before = +100, after = +50
+    // From black's STM: before_stm = -100, after_stm = -50
+    // drop = max(0, -100 - (-50)) = max(0, -50) = 0 (black improved slightly)
+    const before = mockEval([{ score_cp: -100, score_mate: null, pv: ["e7e5"] }]);
     const after  = mockEval([{ score_cp: 50,  score_mate: null, pv: ["e2e4"] }]);
 
     vi.mocked(getEval)
@@ -150,8 +157,6 @@ describe("handleExplainMove", () => {
       pgn: SHORT_PGN,
     });
 
-    // From black's perspective: before_stm = -100, after_stm = -50
-    // drop = max(0, -100 - (-50)) = max(0, -50) = 0
     expect(result.eval_drop_cp).toBe(0);
   });
 

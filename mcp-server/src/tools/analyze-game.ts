@@ -267,12 +267,17 @@ async function runAnalysis(
     const prevEval = allLines[i - 1]?.[0];
     const curEval = allLines[i]?.[0];
     if (!prevEval || !curEval) continue;
-    const prevCp = prevEval.score_mate !== null
+    // Normalise to White's POV before comparing deltas
+    const prevRaw = prevEval.score_mate !== null
       ? (prevEval.score_mate > 0 ? 10000 : -10000)
       : (prevEval.score_cp ?? 0);
-    const curCp = curEval.score_mate !== null
+    const curRaw = curEval.score_mate !== null
       ? (curEval.score_mate > 0 ? 10000 : -10000)
       : (curEval.score_cp ?? 0);
+    const prevPos = positions[i - 1];
+    const curPos = positions[i];
+    const prevCp = prevPos && prevPos.fen.split(" ")[1] === "b" ? -prevRaw : prevRaw;
+    const curCp = curPos && curPos.fen.split(" ")[1] === "b" ? -curRaw : curRaw;
     if (Math.abs(curCp - prevCp) > quietThreshold) {
       criticalIndices.push(i - 1);
       criticalIndices.push(i);
@@ -293,9 +298,20 @@ async function runAnalysis(
     );
   }
 
-  const evals: number[] = allLines.map((lines) => {
+  // Convert raw engine evals to centipawns normalised to White's POV.
+  // Both Stockfish UCI and Lichess cloud return scores from the side-to-move's
+  // perspective, so we flip the sign for positions where Black is to move.
+  const evals: number[] = allLines.map((lines, idx) => {
     const line = lines[0];
-    return line ? lineToEvalCp(line) : 0;
+    if (!line) return 0;
+    const raw = lineToEvalCp(line);
+    const pos = positions[idx];
+    // positions[0] is the starting position (white to move).
+    // After each half-move the side-to-move alternates.
+    // The FEN contains the side-to-move flag, but we can also derive it:
+    // even indices = white to move, odd indices = black to move.
+    const isBlackToMove = pos ? pos.fen.split(" ")[1] === "b" : false;
+    return isBlackToMove ? -raw : raw;
   });
   const bestMoves: string[] = allLines.map((lines) => lines[0]?.pv[0] ?? "");
   const evalsCovered = allLines.filter((lines) => lines.length > 0).length;
@@ -304,6 +320,24 @@ async function runAnalysis(
     ? Math.round((evalsCovered / positions.length) * 100)
     : 0;
   const lowCoverage = evalCoverage < 30;
+
+  // Fix terminal position evals: after checkmate/stalemate the engine returns
+  // no lines (eval 0), which creates phantom eval drops. Detect these and assign
+  // the correct score (from White's POV).
+  for (let i = 0; i < positions.length; i++) {
+    const pos = positions[i];
+    if (!pos) continue;
+    const termBoard = new Chess(pos.fen);
+    if (termBoard.isCheckmate()) {
+      // The side to move is checkmated → the other side wins.
+      const sideToMove = pos.fen.split(" ")[1];
+      // White checkmated → eval is -10000 (bad for White)
+      // Black checkmated → eval is +10000 (good for White)
+      evals[i] = sideToMove === "w" ? -10000 : 10000;
+    } else if (termBoard.isStalemate() || termBoard.isDraw()) {
+      evals[i] = 0;
+    }
+  }
 
   // Convert UCI best moves to SAN and build MoveRecords
   const moveRecords: MoveRecord[] = [];

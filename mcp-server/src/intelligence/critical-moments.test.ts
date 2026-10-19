@@ -22,7 +22,7 @@ function makeMove(
     san: "e4",
     fenBefore: "start",
     fenAfter: "after",
-    bestMoveSan: "e4",
+    bestMoveSan: "d4", // different from san so the invariant doesn't auto-skip
     ...overrides,
   };
 }
@@ -111,6 +111,8 @@ describe("detectCriticalMoments", () => {
       makeMove({
         moveNumber: 5,
         color: "white",
+        san: "h3",
+        bestMoveSan: "Nf3",
         evalBefore: 20,
         evalAfter: -20, // 40cp swing — below threshold
       }),
@@ -120,9 +122,9 @@ describe("detectCriticalMoments", () => {
 
   it("detects multiple critical moments in a game", () => {
     const moves: MoveRecord[] = [
-      makeMove({ moveNumber: 5, color: "white", evalBefore: 0, evalAfter: 20 }),
+      makeMove({ moveNumber: 5, color: "white", san: "e4", bestMoveSan: "e4", evalBefore: 0, evalAfter: 20 }),
       makeMove({ moveNumber: 10, color: "white", san: "blunder1", bestMoveSan: "Nf3", evalBefore: 30, evalAfter: -200 }),
-      makeMove({ moveNumber: 10, color: "black", evalBefore: -200, evalAfter: -190 }),
+      makeMove({ moveNumber: 10, color: "black", san: "Nc6", bestMoveSan: "Nc6", evalBefore: -200, evalAfter: -190 }),
       makeMove({ moveNumber: 20, color: "black", san: "blunder2", bestMoveSan: "Rxe5", evalBefore: -190, evalAfter: 100 }),
     ];
     const moments = detectCriticalMoments(moves);
@@ -159,6 +161,54 @@ describe("detectCriticalMoments", () => {
     const [moment] = detectCriticalMoments(moves);
     expect(moment!.explanation.length).toBeGreaterThan(10);
     expect(moment!.explanation).toContain("Bg5");
+  });
+
+  // --- New tests for issue #85 fixes ---
+
+  it("never flags a move when move_played === best_move (invariant)", () => {
+    const moves: MoveRecord[] = [
+      makeMove({
+        moveNumber: 10,
+        color: "white",
+        san: "Nxe5",
+        bestMoveSan: "Nxe5", // same move
+        evalBefore: 185,
+        evalAfter: -195,     // large phantom drop — should be ignored
+      }),
+    ];
+    expect(detectCriticalMoments(moves)).toHaveLength(0);
+  });
+
+  it("never flags a checkmating move as a blunder (move_played === best_move)", () => {
+    const moves: MoveRecord[] = [
+      makeMove({
+        moveNumber: 16,
+        color: "white",
+        san: "Qxh7#",
+        bestMoveSan: "Qxh7#",
+        evalBefore: 10000,
+        evalAfter: 10000, // after checkmate, eval stays at mate
+      }),
+    ];
+    expect(detectCriticalMoments(moves)).toHaveLength(0);
+  });
+
+  it("a clean engine-line game produces zero critical moments", () => {
+    // Simulate a game where every move matches the engine's best
+    const moves: MoveRecord[] = Array.from({ length: 20 }, (_, i) => {
+      const moveNum = Math.ceil((i + 1) / 2);
+      const color = i % 2 === 0 ? "white" : "black";
+      const san = `move${i}`;
+      return makeMove({
+        moveNumber: moveNum,
+        color: color as "white" | "black",
+        san,
+        bestMoveSan: san, // always matches
+        evalBefore: 30,
+        evalAfter: 25,
+      });
+    });
+    expect(detectCriticalMoments(moves)).toHaveLength(0);
   });
 });
 
@@ -210,6 +260,30 @@ describe("computeAccuracy", () => {
     const accuracy = computeAccuracy(moves, "white");
     expect(accuracy).toBeGreaterThanOrEqual(0);
     expect(accuracy).toBeLessThanOrEqual(100);
+  });
+
+  // --- New tests for issue #85 fixes ---
+
+  it("treats moves matching engine best as accurate regardless of eval noise", () => {
+    const moves: MoveRecord[] = [
+      makeMove({
+        moveNumber: 1,
+        color: "white",
+        san: "e4",
+        bestMoveSan: "e4", // matches engine best
+        evalBefore: 34,
+        evalAfter: -41, // phantom 75cp drop from POV bug — should not matter
+      }),
+      makeMove({
+        moveNumber: 2,
+        color: "white",
+        san: "Nf3",
+        bestMoveSan: "Nf3", // matches engine best
+        evalBefore: 43,
+        evalAfter: -51,
+      }),
+    ];
+    expect(computeAccuracy(moves, "white")).toBe(100);
   });
 });
 

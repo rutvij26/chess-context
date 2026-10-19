@@ -70,6 +70,10 @@ export function detectCriticalMoments(moves: MoveRecord[]): CriticalMoment[] {
   const moments: CriticalMoment[] = [];
 
   for (const move of moves) {
+    // Invariant: if the engine's best move matches the played move, the move
+    // cannot be an error regardless of eval noise.
+    if (move.san === move.bestMoveSan) continue;
+
     const evalBefore = evalForSideToMove(move.evalBefore, move.color);
     const evalAfter = evalForSideToMove(move.evalAfter, move.color);
 
@@ -121,6 +125,8 @@ export function computeAccuracy(moves: MoveRecord[], color: "white" | "black"): 
   if (myMoves.length === 0) return 100;
 
   const accurateMoves = myMoves.filter((m) => {
+    // If the played move matches the engine's best, it's accurate by definition.
+    if (m.san === m.bestMoveSan) return true;
     const evalBefore = evalForSideToMove(m.evalBefore, m.color);
     const evalAfter = evalForSideToMove(m.evalAfter, m.color);
     const drop = evalBefore - evalAfter;
