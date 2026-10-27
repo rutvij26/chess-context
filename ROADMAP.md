@@ -14,6 +14,78 @@
 
 ---
 
+## Hosted Track — free, zero-install remote MCP
+
+Goal: anyone adds one URL (or one click from the Claude connectors directory) and Claude calls
+ChessContext on its own, with no local setup. Everything here is **free tier first**; paid
+features are deferred (see H5). Items are issue-sized; issue numbers get assigned when filed.
+
+Findings from the current code that shape this track:
+- Transport is stdio only (`src/index.ts`). `hono` is already a dependency, so a `/mcp` HTTP route is a small step.
+- None of the 12 registered tools declares annotations (`readOnlyHint` / `destructiveHint`), which the connectors directory requires.
+- Four tools (`get_mistake_patterns`, `get_style_fingerprint`, `generate_puzzles`, `get_analysis_progress`) read from a Postgres game store that `refresh_games` fills. That assumes one local user. A public server needs per-request or per-session scoping, or stateless variants.
+- Engine is a single shared process plus a 500-entry in-memory LRU and a local SQLite file. Fine for one user, not for many.
+- Package name (`mcp-chess`) differs from the repo and server name (`chess-context`).
+
+### H1 — Remote-ready _(one URL, no install)_
+- [ ] Streamable HTTP transport on `/mcp` (Hono), keep stdio working for local use
+- [ ] Add `title` + `readOnlyHint`/`destructiveHint` annotations to all 12 tools (`refresh_games` writes data; the rest are read-only)
+- [ ] Stateless mode: `get_mistake_patterns`, `get_style_fingerprint`, `generate_puzzles` accept a username and fetch + analyze within a bounded request, so they work without a pre-filled Postgres store
+- [ ] `refresh_games` / `get_analysis_progress` become optional (local mode) or are replaced by an async job: fast partial result plus a job ID and a `get_analysis_result` tool
+- [ ] Remove "run `docker compose up -d postgres`" from tool descriptions in hosted mode
+- [ ] `/health` endpoint, config for port and allowed origins, container image for deploy
+- [ ] Unify naming (`chess-context` vs `mcp-chess`) in `package.json`, bin, docs
+- [ ] Fix red CI on `main`
+
+### H1.5 — "How can I improve?" front door _(the first helpful thing, for every level)_
+Target user: everyone. One entry point whose output adapts to the detected rating band
+(`intelligence/player-level.ts`: beginner / club / advanced) instead of separate products.
+
+- [ ] `improve_my_game` — input: a username (Chess.com or Lichess), optional time control.
+      Fetches the last ~20 rated games, then returns:
+      1. **Top 3 recurring leaks**, ranked by rating points lost (reuses `get_mistake_patterns`,
+         `find_opening_gaps`, critical-moment classification), each with one plain sentence,
+         two example positions, and a confidence tag (engine-verified vs heuristic).
+      2. **One drill per leak**: puzzles built from the player's own blunders (`generate_puzzles`).
+      3. **A short plan** for the next 7 days (what to practice, what to play, what to avoid).
+      4. **A "re-run in a week" hook** so progress is measurable (feeds `get_improvement_tracker`, #92).
+- [ ] Level-adaptive voice: beginner = plain English and basics (hanging pieces, checks/captures/threats);
+      club = opening gaps, endgames, time use; advanced = engine lines and theory. Default to the simplest tier when unsure.
+- [ ] Fast first answer: cloud eval + cached positions first, deeper engine pass as a follow-up; no fixed-depth waits on the critical path.
+- [ ] Stateless: works from the username alone, no `refresh_games` or Postgres required (depends on H1 stateless mode).
+- [ ] Routing description written for natural phrasings ("how can I improve", "why do I keep losing", "what should I work on").
+- [ ] Evaluation: run it on real accounts across rating bands and check that its leaks match what stronger players or the games themselves show; keep notes in `docs/`.
+
+### H2 — Protect and scale _(compute is the only real cost)_
+- [ ] Shared eval cache (Redis; was deferred as #12) keyed by FEN + depth + multiPV; cache hits never touch the engine
+- [ ] Engine job queue with a global concurrency cap; engine workers separate from the API service
+- [ ] Per-IP token-bucket rate limits and per-request cost caps (max PGN size, max plies, max depth)
+- [ ] Graceful degradation: lower depth under load instead of failing
+- [ ] Upstream protection: request coalescing and backoff for Chess.com / Lichess, shared `LICHESS_TOKEN`
+- [ ] Input hardening: validate FENs; allow only chess.com / lichess.org hosts for URL inputs (SSRF guard); treat usernames and PGN comments in output as untrusted text
+- [ ] Metrics + alerts: cache hit rate, queue depth, engine-seconds per day, upstream 429s, monthly spend cap
+
+### H3 — Directory submission
+- [ ] Rewrite tool names and descriptions for automatic routing ("use when the user shares a game link, PGN, FEN, or asks about their rating, openings, or an opponent")
+- [ ] Accept forgiving inputs everywhere (bare username, URL, PGN, FEN; fall back to latest game)
+- [ ] Server-level `instructions` string telling Claude when and how to chain tools
+- [ ] Privacy policy, documentation URL, support contact, icon
+- [ ] Test every tool as a custom connector in Claude, then submit through the developer portal
+- [ ] Optional: small skill/plugin that tells Claude when to reach for ChessContext
+
+### H4 — Launch and distribution
+- [ ] 30-60 s demo video of a real game review (replace illustrative README examples with real output)
+- [ ] Seed 5-10 real users before public launch; fix what breaks
+- [ ] Announce: r/chess, r/chessbeginners, Lichess + Chess.com forums, Show HN, MCP lists
+- [ ] Pick one sharp positioning claim (e.g. "find why you lose from your own games") and lead with it
+
+### H5 — Deferred
+- [ ] Accounts, credits and billing: deferred; no decision until the legal/administrative questions around charging are settled
+
+Housekeeping: remove the personal local path from the Claude Desktop example in `CLAUDE.md`.
+
+---
+
 ### v0.1 — MVP ✅ _(4 tools)_
 - [x] `analyze_position` — FEN → semantic analysis, narrative, best moves
 - [x] `analyze_game` — PGN/Lichess URL → game review with critical moments (see Known Issues)
@@ -35,34 +107,34 @@
 - [ ] ~~Expand themes: 15 → 50+~~ → deferred to v0.6 → [#11](https://github.com/rutvij26/chess-context/issues/11)
 - [ ] ~~Redis cache option (optional upgrade from SQLite)~~ → deferred to v1.0 → [#12](https://github.com/rutvij26/chess-context/issues/12)
 
-### v0.6 — Post-Game Intelligence _(7 tools total)_
+### v0.6 — Post-Game Intelligence ✅ _(7 tools total)_
 3 new tools. All output adapts explanation depth to detected player level
 (beginner / club player / advanced).
 
-- [ ] `review_game` — one-click post-game debrief: accuracy by phase, key turning point,
+- [x] `review_game` — one-click post-game debrief: accuracy by phase, key turning point,
       what to study next. Beginners get plain English; club players get engine lines.
       → [#13](https://github.com/rutvij26/chess-context/issues/13)
-- [ ] `get_mistake_patterns` — scan last N games for recurring mistake types:
+- [x] `get_mistake_patterns` — scan last N games for recurring mistake types:
       "you consistently blunder when castling queenside under time pressure".
       Uses Chess.com / Lichess game history. Free, no API keys required.
       → [#14](https://github.com/rutvij26/chess-context/issues/14)
-- [ ] `get_style_fingerprint` — characterize a player across 5 dimensions:
+- [x] `get_style_fingerprint` — characterize a player across 5 dimensions:
       aggression, positional sense, tactical sharpness, endgame skill, time management.
       Derived from last 50 rated games. Works on both platforms.
       → [#15](https://github.com/rutvij26/chess-context/issues/15)
 
-### v0.7 — Opening & Training _(10 tools total)_
+### v0.7 — Opening & Training ✅ _(10 tools total)_
 3 new tools — reaches 10 total registered MCP tools.
 
-- [ ] `get_opening_theory` — opening narrative for any position: name, key ideas, main
+- [x] `get_opening_theory` — opening narrative for any position: name, key ideas, main
       continuations, historical context. Uses Lichess Opening Explorer (free).
       Explanation adapts to player level.
       → [#16](https://github.com/rutvij26/chess-context/issues/16)
-- [ ] `find_opening_gaps` — analyze a player's repertoire and surface positions they haven't
+- [x] `find_opening_gaps` — analyze a player's repertoire and surface positions they haven't
       studied where opponents commonly deviate and win.
       "Your Italian Game collapses after 5.d3 Nc6 6.c3 — 7 losses from this position."
       → [#17](https://github.com/rutvij26/chess-context/issues/17)
-- [ ] `generate_puzzles` — extract tactical puzzles from a player's own games: positions
+- [x] `generate_puzzles` — extract tactical puzzles from a player's own games: positions
       where they missed a tactic or blundered. Returns FEN + solution + difficulty estimate.
       Free, offline-capable once game data is fetched.
       → [#18](https://github.com/rutvij26/chess-context/issues/18)
@@ -89,7 +161,7 @@ All position-returning tools include a `boardData` artifact payload for interact
       whether the novelty was an improvement or a mistake → [#23](https://github.com/rutvij26/chess-context/issues/23)
 - [ ] `compare_games` — surface what changed between two games by the same player
       (useful for "did my opening improve after studying this line?") → [#24](https://github.com/rutvij26/chess-context/issues/24)
-- [ ] `explain_move` — given any game (PGN / chess.com URL / lichess URL / username) + move
+- [x] `explain_move` — given any game (PGN / chess.com URL / lichess URL / username) + move
       number, explain why the move was played, what the best alternative was, and what to
       remember → [#87](https://github.com/rutvij26/chess-context/issues/87)
 - [ ] `get_improvement_tracker` — week-over-week accuracy, blunder rate trend, ELO trajectory
