@@ -37,6 +37,25 @@ Findings from the current code that shape this track:
 - [ ] Unify naming (`chess-context` vs `mcp-chess`) in `package.json`, bin, docs
 - [ ] Fix red CI on `main`
 
+### H1.5 — "How can I improve?" front door _(the first helpful thing, for every level)_
+Target user: everyone. One entry point whose output adapts to the detected rating band
+(`intelligence/player-level.ts`: beginner / club / advanced) instead of separate products.
+
+- [ ] `improve_my_game` — input: a username (Chess.com or Lichess), optional time control.
+      Fetches the last ~20 rated games, then returns:
+      1. **Top 3 recurring leaks**, ranked by rating points lost (reuses `get_mistake_patterns`,
+         `find_opening_gaps`, critical-moment classification), each with one plain sentence,
+         two example positions, and a confidence tag (engine-verified vs heuristic).
+      2. **One drill per leak**: puzzles built from the player's own blunders (`generate_puzzles`).
+      3. **A short plan** for the next 7 days (what to practice, what to play, what to avoid).
+      4. **A "re-run in a week" hook** so progress is measurable (feeds `get_improvement_tracker`, #92).
+- [ ] Level-adaptive voice: beginner = plain English and basics (hanging pieces, checks/captures/threats);
+      club = opening gaps, endgames, time use; advanced = engine lines and theory. Default to the simplest tier when unsure.
+- [ ] Fast first answer: cloud eval + cached positions first, deeper engine pass as a follow-up; no fixed-depth waits on the critical path.
+- [ ] Stateless: works from the username alone, no `refresh_games` or Postgres required (depends on H1 stateless mode).
+- [ ] Routing description written for natural phrasings ("how can I improve", "why do I keep losing", "what should I work on").
+- [ ] Evaluation: run it on real accounts across rating bands and check that its leaks match what stronger players or the games themselves show; keep notes in `docs/`.
+
 ### H2 — Protect and scale _(compute is the only real cost)_
 - [ ] Shared eval cache (Redis; was deferred as #12) keyed by FEN + depth + multiPV; cache hits never touch the engine
 - [ ] Engine job queue with a global concurrency cap; engine workers separate from the API service
