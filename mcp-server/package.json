@@ -47,7 +47,7 @@
   "license": "MIT",
   "overrides": {
     "@hono/node-server": "^2.1.5",
-    "fast-uri": "^4.2.2",
+    "fast-uri": "^4.2.3",
     "ip-address": "^10.7.4",
     "express-rate-limit": "^8.7.1",
     "proxy-addr": "^2.0.8",
